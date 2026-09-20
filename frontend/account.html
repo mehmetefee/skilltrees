@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign in — Skill Trees</title>
+<link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<script src="/theme.js"></script>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <a class="back-link" href="/#browse">&larr; All trees</a>
+
+    <div class="page-header">
+      <div>
+        <h1 id="auth-heading">Sign in</h1>
+        <p id="auth-intro">Trees can be browsed by anyone, but only the account that made a tree can change it.</p>
+      </div>
+    </div>
+
+    <div class="auth-card">
+      <form id="auth-form">
+        <div class="field">
+          <label for="auth-username">Username</label>
+          <input id="auth-username" type="text" maxlength="40" required autocomplete="username"
+            autofocus placeholder="letters, numbers, dash or underscore" />
+        </div>
+        <div class="field">
+          <label for="auth-password">Password</label>
+          <input id="auth-password" type="password" maxlength="200" required
+            autocomplete="current-password" placeholder="at least 8 characters" />
+        </div>
+        <div id="auth-error" class="import-problems" hidden></div>
+        <div class="auth-actions">
+          <button type="submit" class="btn btn-primary" id="auth-submit">Sign in</button>
+          <button type="button" class="btn" id="auth-toggle">Create an account instead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

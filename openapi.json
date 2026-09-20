@@ -1,0 +1,831 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Skill Trees API",
+    "description": "Backend API for a public skill-tree sharing site. Reading is public and needs no account; creating or changing a tree requires a session, and a tree may only be modified by the account that created it. Zero external dependencies: node:http and node:sqlite only.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3001",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "Accounts and sessions" },
+    { "name": "Trees", "description": "Skill trees" },
+    { "name": "Skills", "description": "Individual skills inside a tree" },
+    { "name": "Prerequisites", "description": "Directed links between skills" },
+    { "name": "Import Export", "description": "The portable JSON tree format" }
+  ],
+  "paths": {
+    "/api/auth/signup": {
+      "post": {
+        "operationId": "signup",
+        "summary": "Create an account",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Credentials" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created; a session cookie is set",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/User" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Sign in",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Credentials" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in; a session cookie is set",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/User" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Sign out and invalidate the session",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Signed out; the session cookie is cleared",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "getCurrentUser",
+        "summary": "The signed-in account, or null",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }, {}],
+        "responses": {
+          "200": {
+            "description": "The current account, or null when signed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["user"],
+                  "properties": {
+                    "user": {
+                      "nullable": true,
+                      "allOf": [{ "$ref": "#/components/schemas/User" }]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/trees": {
+      "get": {
+        "operationId": "listTrees",
+        "summary": "All public trees, newest first",
+        "tags": ["Trees"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Every tree, with its skill count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "maxItems": 10000,
+                  "items": { "$ref": "#/components/schemas/TreeSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "operationId": "createTree",
+        "summary": "Create a tree owned by the signed-in account",
+        "tags": ["Trees"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TreeCreate" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created tree",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Tree" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/trees/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/TreeId" }],
+      "get": {
+        "operationId": "getTree",
+        "summary": "One tree with its skills and prerequisite links",
+        "tags": ["Trees"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The tree, its skills and its links",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TreeDetail" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "patch": {
+        "operationId": "updateTree",
+        "summary": "Change a tree's title, description or author",
+        "description": "Only the account that owns the tree may do this. Trees created before accounts existed have no owner and are read-only for everyone.",
+        "tags": ["Trees"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TreeUpdate" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated tree",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Tree" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTree",
+        "summary": "Delete a tree and everything in it",
+        "tags": ["Trees"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/trees/{id}/skills": {
+      "parameters": [{ "$ref": "#/components/parameters/TreeId" }],
+      "post": {
+        "operationId": "createSkill",
+        "summary": "Add a skill to a tree",
+        "tags": ["Skills"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SkillCreate" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created skill",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Skill" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/skills/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/SkillId" }],
+      "patch": {
+        "operationId": "updateSkill",
+        "summary": "Rename or reposition a skill",
+        "tags": ["Skills"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SkillUpdate" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated skill",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Skill" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSkill",
+        "summary": "Delete a skill and its links",
+        "tags": ["Skills"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/trees/{id}/prereqs": {
+      "parameters": [{ "$ref": "#/components/parameters/TreeId" }],
+      "post": {
+        "operationId": "createPrereq",
+        "summary": "Link one skill as a prerequisite of another",
+        "description": "Both skills must belong to this tree, and the link must not create a cycle.",
+        "tags": ["Prerequisites"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PrereqCreate" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created link",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Edge" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/prereqs/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/PrereqId" }],
+      "delete": {
+        "operationId": "deletePrereq",
+        "summary": "Remove a prerequisite link",
+        "tags": ["Prerequisites"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/trees/{id}/export": {
+      "parameters": [{ "$ref": "#/components/parameters/TreeId" }],
+      "get": {
+        "operationId": "exportTree",
+        "summary": "Download a tree in the portable format",
+        "tags": ["Import Export"],
+        "security": [],
+        "parameters": [
+          {
+            "name": "layout",
+            "in": "query",
+            "required": false,
+            "description": "Override the tree's own layout mode.",
+            "schema": { "$ref": "#/components/schemas/LayoutMode" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tree as a portable JSON document",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Attachment filename derived from the tree title.",
+                "schema": { "type": "string", "maxLength": 300 }
+              }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Notation" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "operationId": "exportTreeWithPositions",
+        "summary": "Download a tree, supplying on-screen coordinates",
+        "description": "Dragging a skill is session-only and never saved, so the browser sends its current arrangement with the request when exporting as manual.",
+        "tags": ["Import Export"],
+        "security": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ExportRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The tree as a portable JSON document",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Attachment filename derived from the tree title.",
+                "schema": { "type": "string", "maxLength": 300 }
+              }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Notation" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/trees/import": {
+      "post": {
+        "operationId": "importTree",
+        "summary": "Create a tree from a portable JSON document",
+        "tags": ["Import Export"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Notation" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The imported tree",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Tree" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationProblems" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "skilltree_session",
+        "description": "Opaque 256-bit session token. HttpOnly, SameSite=Lax, and Secure when served over HTTPS."
+      }
+    },
+    "headers": {
+      "SetSessionCookie": {
+        "description": "Sets or clears the session cookie.",
+        "schema": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "parameters": {
+      "TreeId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Tree id.",
+        "schema": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "SkillId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Skill id.",
+        "schema": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "PrereqId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Prerequisite link id.",
+        "schema": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request was malformed or failed validation",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Unauthorized": {
+        "description": "Not signed in, or the credentials were wrong",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Signed in, but this is not your tree (or it has no owner and is read-only)",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "No such resource",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "Already exists",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "PayloadTooLarge": {
+        "description": "Request body exceeded 1 MB",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "TooManyRequests": {
+        "description": "Too many attempts; throttled",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ValidationProblems": {
+        "description": "The document was rejected, with a list of reasons",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } }
+      },
+      "ServerError": {
+        "description": "Unexpected server error",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Ok": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "maxLength": 300 }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "maxLength": 300 },
+          "problems": {
+            "type": "array",
+            "maxItems": 500,
+            "items": { "type": "string", "maxLength": 500 }
+          }
+        }
+      },
+      "Credentials": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["username", "password"],
+        "properties": {
+          "username": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{3,40}$",
+            "minLength": 3,
+            "maxLength": 40,
+            "example": "ada"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8,
+            "maxLength": 4096,
+            "example": "a-long-enough-passphrase"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "username"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
+          "username": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{3,40}$", "minLength": 3, "maxLength": 40 }
+        }
+      },
+      "LayoutMode": {
+        "type": "string",
+        "enum": ["manual", "auto"],
+        "description": "manual: stored coordinates are authoritative. auto: coordinates are ignored and the layout is computed from structure."
+      },
+      "Timestamp": {
+        "type": "string",
+        "description": "SQLite datetime('now') output in UTC: 'YYYY-MM-DD HH:MM:SS'. Note this is not RFC 3339 (no 'T' separator, no offset).",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+        "minLength": 19,
+        "maxLength": 19,
+        "example": "2026-09-19 07:58:31"
+      },
+      "Tree": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "description", "author", "layout", "featured", "created_at"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "author": { "type": "string", "maxLength": 80 },
+          "layout": { "$ref": "#/components/schemas/LayoutMode" },
+          "featured": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1,
+            "readOnly": true,
+            "description": "1 for the homepage spotlight. Set server-side only; ignored if supplied in a request."
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "nullable": true,
+            "readOnly": true,
+            "description": "Owning account. null means the tree predates accounts and is read-only for everyone."
+          },
+          "created_at": { "allOf": [{ "$ref": "#/components/schemas/Timestamp" }], "readOnly": true }
+        }
+      },
+      "TreeSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "description", "author", "created_at", "featured", "skill_count"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "author": { "type": "string", "maxLength": 80 },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "featured": { "type": "integer", "minimum": 0, "maximum": 1 },
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "nullable": true
+          },
+          "skill_count": { "type": "integer", "format": "int32", "minimum": 0, "maximum": 100000 }
+        }
+      },
+      "TreeDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "description", "author", "layout", "featured", "created_at", "skills", "edges"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "author": { "type": "string", "maxLength": 80 },
+          "layout": { "$ref": "#/components/schemas/LayoutMode" },
+          "featured": { "type": "integer", "minimum": 0, "maximum": 1 },
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "nullable": true
+          },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "skills": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": { "$ref": "#/components/schemas/Skill" }
+          },
+          "edges": {
+            "type": "array",
+            "maxItems": 100000,
+            "items": { "$ref": "#/components/schemas/Edge" }
+          }
+        }
+      },
+      "TreeCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 120, "example": "Home Bread Baking" },
+          "description": { "type": "string", "maxLength": 1000 },
+          "author": { "type": "string", "maxLength": 80 }
+        }
+      },
+      "TreeUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "author": { "type": "string", "maxLength": 80 }
+        }
+      },
+      "Skill": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "tree_id", "name", "description", "pos_x", "pos_y", "created_at"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
+          "tree_id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "pos_x": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 },
+          "pos_y": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 },
+          "created_at": { "allOf": [{ "$ref": "#/components/schemas/Timestamp" }], "readOnly": true }
+        }
+      },
+      "SkillCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120, "example": "Knead dough" },
+          "description": { "type": "string", "maxLength": 1000 },
+          "pos_x": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 },
+          "pos_y": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 }
+        }
+      },
+      "SkillUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "pos_x": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 },
+          "pos_y": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 }
+        }
+      },
+      "Edge": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "skill_id", "prereq_skill_id"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
+          "skill_id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+          "prereq_skill_id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
+        }
+      },
+      "PrereqCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["skill_id", "prereq_skill_id"],
+        "properties": {
+          "skill_id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+          "prereq_skill_id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
+        }
+      },
+      "Position": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["x", "y"],
+        "properties": {
+          "x": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 },
+          "y": { "type": "number", "format": "double", "minimum": -1000000, "maximum": 1000000 }
+        }
+      },
+      "ExportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "layout": { "$ref": "#/components/schemas/LayoutMode" },
+          "positions": {
+            "type": "object",
+            "nullable": true,
+            "description": "Map of skill id to on-screen coordinates.",
+            "additionalProperties": { "$ref": "#/components/schemas/Position" }
+          }
+        }
+      },
+      "NotationSkill": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Slug, unique within the document. Skills reference each other by slug, never by database id.",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "knead-dough"
+          },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "requires": {
+            "type": "array",
+            "maxItems": 1000,
+            "description": "Slugs of the skills required before this one. All are required together.",
+            "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "minLength": 1, "maxLength": 120 }
+          },
+          "position": { "$ref": "#/components/schemas/Position" }
+        }
+      },
+      "Notation": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The portable tree format described in FORMAT.md.",
+        "required": ["format", "version", "title", "skills"],
+        "properties": {
+          "format": { "type": "string", "enum": ["skilltree"] },
+          "version": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 1 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "author": { "type": "string", "maxLength": 80 },
+          "layout": { "$ref": "#/components/schemas/LayoutMode" },
+          "skills": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": { "$ref": "#/components/schemas/NotationSkill" }
+          }
+        }
+      }
+    }
+  }
+}

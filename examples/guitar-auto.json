@@ -1,0 +1,56 @@
+{
+  "format": "skilltree",
+  "version": 1,
+  "title": "Playing Guitar",
+  "description": "An auto-arranged tree: no coordinates anywhere, so it lays itself out wherever it's opened.",
+  "author": "Claude",
+  "layout": "auto",
+  "skills": [
+    {
+      "id": "tune-by-ear",
+      "name": "Tune by ear",
+      "description": "Match strings to a reference pitch without an app."
+    },
+    {
+      "id": "hold-a-pick",
+      "name": "Hold a pick",
+      "description": "Grip and angle for clean, consistent strokes."
+    },
+    {
+      "id": "open-chords",
+      "name": "Open chords",
+      "description": "E, A, D, G, C and their minors.",
+      "requires": ["tune-by-ear", "hold-a-pick"]
+    },
+    {
+      "id": "chord-changes",
+      "name": "Smooth chord changes",
+      "description": "Move between open chords in time without stopping.",
+      "requires": ["open-chords"]
+    },
+    {
+      "id": "strumming-patterns",
+      "name": "Strumming patterns",
+      "description": "Keep a steady hand through varied rhythms.",
+      "requires": ["hold-a-pick"]
+    },
+    {
+      "id": "barre-chords",
+      "name": "Barre chords",
+      "description": "Fret a full barre cleanly and move shapes up the neck.",
+      "requires": ["chord-changes"]
+    },
+    {
+      "id": "play-a-song",
+      "name": "Play a song end to end",
+      "description": "Combine chords and rhythm into a complete piece.",
+      "requires": ["chord-changes", "strumming-patterns"]
+    },
+    {
+      "id": "play-with-others",
+      "name": "Play with other people",
+      "description": "Hold your part while listening and staying in time.",
+      "requires": ["play-a-song", "barre-chords"]
+    }
+  ]
+}

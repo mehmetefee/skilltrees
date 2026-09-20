@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Skill Tree Viewer</title>
+<link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<script src="/theme.js"></script>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="tree-fullscreen-wrap" id="viewer-wrap">
+    <!-- Top-left info overlay -->
+    <div class="tree-overlay-topleft">
+      <a class="back-link" href="/#browse">&larr; All trees</a>
+      <h1 id="viewer-title" class="tree-title" style="margin: 0 0 4px; font-size: 24px;"></h1>
+      <p id="viewer-desc" class="tree-desc" style="margin: 0 0 6px;"></p>
+      <div class="meta" id="viewer-meta"></div>
+      <p class="hint-bar" id="viewer-hint">Click a skill to see details. Drag to reposition.</p>
+    </div>
+
+    <!-- Top-right actions -->
+    <div class="tree-overlay-topright">
+      <input type="file" id="viewer-file-input" accept=".json,application/json" hidden />
+      <button class="btn" id="viewer-open-btn">Open JSON</button>
+      <button class="btn btn-primary" id="viewer-publish-btn">Publish to site</button>
+      <button class="btn" id="viewer-export-btn" title="Download this tree as a JSON file">Export</button>
+      <span class="auth-slot"></span>
+    </div>
+
+    <!-- Zoom controls -->
+    <div class="zoom-controls" role="group" aria-label="Zoom controls">
+      <button class="btn btn-small" id="viewer-zoom-in" title="Zoom in">+</button>
+      <button class="btn btn-small" id="viewer-zoom-out" title="Zoom out">&minus;</button>
+      <button class="btn btn-small" id="viewer-zoom-fit" title="Fit to screen">Fit</button>
+    </div>
+
+    <!-- Graph SVG -->
+    <svg id="viewer-svg" width="100%" height="100%">
+      <defs>
+        <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--locked)"></polygon>
+        </marker>
+        <marker id="arrowhead-accent" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--accent)"></polygon>
+        </marker>
+        <marker id="arrowhead-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="#10b981"></polygon>
+        </marker>
+      </defs>
+      <g id="edges-layer"></g>
+      <g id="nodes-layer"></g>
+    </svg>
+
+    <!-- Empty / Dropzone overlay when no tree is loaded -->
+    <div id="viewer-empty" class="modal-overlay" hidden>
+      <div class="modal" style="text-align: center;">
+        <h2>Open a Skill Tree</h2>
+        <p class="modal-subtitle">
+          Select a skill tree JSON file or paste its contents to view it locally without publishing.
+        </p>
+        <div class="field">
+          <input type="file" id="modal-file-input" accept=".json,application/json" style="margin-bottom: 12px;" />
+          <textarea id="modal-text-input" rows="7" spellcheck="false"
+            style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"
+            placeholder='Or paste skill tree JSON here...'></textarea>
+        </div>
+        <div id="modal-problems" class="import-problems" hidden></div>
+        <div class="modal-actions" style="justify-content: center; margin-top: 16px;">
+          <a href="/#browse" class="btn">Back to browse</a>
+          <button type="button" class="btn btn-primary" id="modal-load-btn">Load in viewer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom legend -->
+    <div class="legend">
+      <span><span class="swatch locked"></span>Has prerequisites</span>
+      <span><span class="swatch unlocked"></span>Start here (no prerequisites)</span>
+    </div>
+
+    <!-- Bottom hint -->
+  </div>
+
+  <!-- Side panel: skill details -->
+  <div class="side-panel" id="side-panel">
+    <button class="close-btn" id="panel-close" aria-label="Close details panel">&times;</button>
+    <h2 id="panel-name"></h2>
+    <p id="panel-desc" style="color: var(--text-muted); font-size: 14px;"></p>
+
+    <div class="panel-section">
+      <h3>Requires</h3>
+      <ul class="prereq-list" id="panel-prereqs"></ul>
+    </div>
+    <div class="panel-section">
+      <h3>Unlocks</h3>
+      <ul class="unlock-list" id="panel-unlocks"></ul>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/layout.js"></script>
+  <script src="/app.js"></script>
+  <script src="/viewer.js"></script>
+</body>
+</html>

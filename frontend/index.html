@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Skill Trees</title>
+<link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<script src="/theme.js"></script>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Persistent top-right actions (always visible across featured hero and browse) -->
+  <header class="site-header-actions" id="site-actions">
+    <button class="btn" data-open="import">Import</button>
+    <a class="btn btn-primary" href="/tree.html">+ New skill tree</a>
+    <span class="auth-slot"></span>
+  </header>
+
+  <div id="featured-hero" class="featured-hero" hidden>
+    <div id="featured" style="position: absolute; top: 0; left: 0;"></div>
+    <div class="zoom-controls" role="group" aria-label="Zoom controls">
+      <button class="btn btn-small" id="featured-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button class="btn btn-small" id="featured-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <button class="btn btn-small" id="featured-zoom-fit" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
+    </div>
+    <svg id="featured-svg" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="featured-hero-overlay">
+      <h2 id="featured-title"></h2>
+      <p id="featured-desc"></p>
+      <div class="meta" id="featured-meta"></div>
+      <a class="btn btn-primary" id="featured-link" href="#">Open this tree</a>
+    </div>
+    <a href="#browse" class="featured-scroll-hint" id="scroll-hint-btn">Browse all trees &darr;</a>
+  </div>
+
+  <div class="container">
+    <div class="page-header" id="browse">
+      <div>
+        <h1>Browse public skill trees</h1>
+        <p>Explore how skills unlock other skills, or start your own tree for any craft, subject, or hobby.</p>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <input type="text" id="tree-search" class="search-input" placeholder="Search skill trees by name..." autocomplete="off" />
+      <div id="search-dropdown" class="search-dropdown" hidden></div>
+    </div>
+
+    <div id="tree-grid" class="tree-grid"></div>
+    <div id="empty-state" class="empty-state" hidden>
+      <p>No skill trees yet. Be the first to create one!</p>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="import-overlay" hidden>
+    <div class="modal">
+      <h2>Import a skill tree</h2>
+      <p class="modal-subtitle">
+        Paste a skill tree JSON file, or choose one from your computer.
+        The format is described in <code>FORMAT.md</code>.
+      </p>
+      <form id="import-form">
+        <div class="field">
+          <label for="import-file">From a file</label>
+          <input id="import-file" type="file" accept=".json,application/json" />
+        </div>
+        <div class="field">
+          <label for="import-text">Or paste it here</label>
+          <textarea id="import-text" rows="10" spellcheck="false"
+            style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"
+            placeholder='{&#10;  "format": "skilltree",&#10;  "version": 1,&#10;  "title": "My tree",&#10;  "skills": []&#10;}'></textarea>
+        </div>
+        <div id="import-problems" class="import-problems" hidden></div>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="import-cancel-btn">Cancel</button>
+          <button type="button" class="btn" id="import-viewer-btn">Open in viewer</button>
+          <button type="submit" class="btn btn-primary">Import &amp; publish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/layout.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1764 @@
+/* Skill Trees — visual system.
+ *
+ * Dark-first: the product is a graph canvas, so an unlit surface is the
+ * default and light is the deliberate alternative. Both are supported;
+ * prefers-color-scheme picks, and [data-theme] overrides it.
+ *
+ * Direction: Swiss/minimalist — grid, generous space, one accent, type doing
+ * the hierarchy rather than boxes and colour. Blue is the identity colour
+ * (unlocked skills and primary actions); warm orange is alert/danger;
+ * neither is used as the only carrier of meaning.
+ *
+ * Type is Inter, in variable files served from this origin — see the font
+ * section below for why it is self-hosted rather than linked. No font CDN
+ * and no animation library: the CSP names no external origin at all, and the
+ * project takes no dependencies. Motion is plain CSS transitions.
+ */
+
+/* ---------------------------------------------------------------- tokens */
+
+:root {
+  color-scheme: light;
+
+  /* Dimensions & Timing */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 26px;
+  --text-2xl: 32px;
+
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 350ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --grid-size: 28px;
+  --glass-blur: 18px;
+
+  /* Light mode palette */
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text: #0f172a;
+  --text-muted: #51617a;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --on-accent: #ffffff;
+
+  --info: #1d4ed8;
+  --danger: #c2410c;
+
+  --locked: #7c8ba1;
+  --unlocked: #2563eb;
+  --selected: #b45309;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 4px 8px rgba(15, 23, 42, 0.08), 0 16px 40px rgba(15, 23, 42, 0.12);
+
+  --halo: 0 1px 3px var(--bg), 0 1px 12px var(--bg), 0 0 24px var(--bg);
+
+  --glass-bg: rgba(255, 255, 255, 0.76);
+  --glass-border: rgba(15, 23, 42, 0.1);
+
+  --grid-dot: rgba(15, 23, 42, 0.1);
+  --node-gradient-start: #ffffff;
+  --node-gradient-end: #f8fafc;
+}
+
+/* ------------------------------------------------------------------ font */
+
+/* Inter, served from this origin.
+ *
+ * One family doing the whole interface on weight alone, which is the Swiss
+ * direction this stylesheet already describes — and the face the original
+ * font stack named first among its preferences, back when it could only be
+ * used by whoever happened to have it installed.
+ *
+ * Self-hosted rather than linked from a font CDN, which is what lets the
+ * Content-Security-Policy stay as strict as it is: it names no external
+ * origin at all, so fonts fall under default-src 'self' with no font-src
+ * exception, and no third party learns who visits the site.
+ *
+ * These are variable files — one per script, carrying every weight from 400
+ * to 700 — and unicode-range means a browser fetches only the scripts the
+ * text on screen actually needs. An interface in English costs one 47 KB
+ * file for all four weights; a tree written in Greek or Cyrillic pulls its
+ * own, and nobody pays for a script they never render.
+ */
+
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-greek.woff2') format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-greek-ext.woff2') format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+
+/* ------------------------------------------------------------------ base */
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  /* The system face stays behind it: swap means text is readable before the
+     font arrives, and a blocked or failed download leaves the page fine. */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--text-md);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-weight: 650;
+  color: var(--text);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+/* One focus treatment for everything, never removed. :focus-visible keeps it
+   off mouse clicks while leaving it on for keyboards. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection { background: var(--accent); color: var(--on-accent); }
+
+.container {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5) var(--space-8);
+}
+
+/* --------------------------------------------------------------- headings */
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+  padding-right: 360px;
+}
+
+/* The page title carries the weight here — big, tight, with a short accent
+   rule under it instead of a full-width divider. */
+.page-header h1 {
+  font-size: clamp(var(--text-2xl), 5vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 0 0 var(--space-3);
+  position: relative;
+  padding-bottom: var(--space-3);
+}
+
+.page-header h1::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 56px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.page-header p {
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--text-base);
+}
+
+.page-header-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.back-link {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  display: inline-block;
+}
+
+/* --------------------------------------------------------------- buttons */
+
+/* .btn is the bordered control. .btn-primary is deliberately text-only —
+   primary actions on this site read as words, not filled blocks. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+
+.btn:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+/* inline-flex above would otherwise beat the hidden attribute, leaving
+   buttons on screen that the page meant to take away. */
+.btn[hidden] { display: none; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#link-mode-btn.linking-active {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.45);
+  animation: pulseButton 1.6s ease-in-out infinite;
+}
+
+@keyframes pulseButton {
+  0%, 100% { box-shadow: 0 0 8px rgba(37, 99, 235, 0.35); }
+  50% { box-shadow: 0 0 16px rgba(37, 99, 235, 0.65); }
+}
+
+.btn-primary {
+  background: none;
+  border-color: transparent;
+  color: var(--accent);
+  padding-left: var(--space-1);
+  padding-right: var(--space-1);
+}
+.btn-primary:hover {
+  background: none;
+  border-color: transparent;
+  color: var(--accent-hover);
+  text-decoration: underline;
+  transform: translateY(-1px);
+}
+
+.btn-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+
+.btn-download:hover {
+  background: var(--surface-2);
+  border-color: var(--text);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.btn-download:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+.btn-danger { color: var(--danger); }
+.btn-danger:hover { border-color: var(--danger); background: var(--surface-2); }
+
+.btn-small { padding: 6px 10px; font-size: var(--text-sm); }
+
+
+
+/* A button that reads as a link, for actions that aren't navigation. */
+.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+.linkish:hover { color: var(--accent-hover); text-decoration: underline; }
+
+/* Pointer-coarse devices get the 44px target the finger needs, without
+   inflating the same control on a desktop. */
+@media (pointer: coarse) {
+  .btn, .linkish { min-height: 44px; }
+  .zoom-controls .btn { min-width: 44px; }
+}
+
+/* ----------------------------------------------------------------- forms */
+
+.field { margin-bottom: var(--space-4); }
+.field label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-base);
+  font-family: inherit;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.field input:hover,
+.field textarea:hover { border-color: var(--border-strong); }
+.field input:focus,
+.field textarea:focus { outline: none; border-color: var(--accent); }
+.field textarea { resize: vertical; min-height: 72px; }
+.field input::placeholder,
+.field textarea::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+.choice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-3);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.choice:hover {
+  border-color: var(--border-strong);
+}
+.choice input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 3px 0 0 0;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  display: grid;
+  place-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.15s ease;
+}
+
+.choice input[type="radio"]::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.2s ease;
+}
+
+.choice input[type="radio"]:checked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.choice input[type="radio"]:checked::before {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.choice:hover input[type="radio"]:not(:checked) {
+  border-color: var(--border-strong);
+}
+
+.choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.choice:active input[type="radio"] {
+  transform: scale(0.9);
+}
+.choice strong {
+  display: block;
+  font-size: var(--text-base);
+  margin-bottom: 3px;
+  color: var(--text);
+}
+.choice em {
+  font-style: normal;
+  font-size: var(--text-sm);
+  color: var(--text);
+  opacity: 0.85;
+}
+
+/* Errors sit with the form they belong to, not only at the top of the page. */
+.import-problems {
+  border: 1px solid rgba(194, 65, 12, 0.3);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: #fff7ed;
+  color: #9a3412;
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.import-problems strong { color: var(--danger); display: block; margin-bottom: var(--space-2); font-weight: 650; }
+.import-problems ul { margin: 0; padding-left: 18px; }
+.import-problems li { margin-bottom: var(--space-1); }
+.import-problems li:last-child { margin-bottom: 0; }
+
+/* ---------------------------------------------------------------- search */
+
+.search-wrap { position: relative; margin-bottom: var(--space-5); }
+
+.search-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-base);
+  font-family: inherit;
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+.search-input:hover { border-color: var(--border-strong); }
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14), var(--shadow-sm);
+}
+.search-input::placeholder { color: var(--text-muted); }
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  overflow: hidden;
+}
+.search-dropdown[hidden] { display: none; }
+.search-dropdown:not([hidden]) {
+  animation: dropdownReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dropdownReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: var(--text-base);
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur-fast) var(--ease),
+              padding-left var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.search-item:last-child { border-bottom: none; }
+.search-item:hover,
+.search-item.active {
+  background: var(--accent-soft);
+  padding-left: 18px;
+}
+.search-item-title { font-weight: 600; color: var(--text); }
+.search-item-meta { color: var(--text-muted); font-size: var(--text-xs); }
+
+/* ------------------------------------------------------------ tree cards */
+
+.tree-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.tree-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: inherit;
+  overflow: hidden;
+  animation: cardEntrance 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform var(--dur) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+@keyframes cardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* An accent rail that grows in on hover, rather than recolouring the border
+   and having the whole card flash. */
+.tree-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform var(--dur) var(--ease);
+}
+
+.tree-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg), 0 0 24px rgba(37, 99, 235, 0.08);
+  text-decoration: none;
+}
+.tree-card:hover::before { transform: scaleY(1); }
+.tree-card h3 { margin: 0; font-size: var(--text-md); color: var(--text); }
+.tree-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  flex-grow: 1;
+}
+.tree-card .meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-5);
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---------------------------------------------------------------- modals */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--space-4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeIn var(--dur) var(--ease);
+}
+.modal-overlay[hidden] {
+  display: none !important;
+}
+
+.modal {
+  position: relative;
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - var(--space-7));
+  overflow-y: auto;
+  box-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.18),
+              0 0 0 1px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--border);
+  animation: modalScaleIn var(--dur-slow) var(--ease-bounce);
+}
+.modal[hidden] {
+  display: none !important;
+}
+
+.modal h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.modal-subtitle,
+.modal > p:first-of-type {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 0;
+  margin-bottom: var(--space-5);
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+/* Modal primary action buttons */
+.modal .btn-primary,
+.modal button[type="submit"]:not(.btn-danger) {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
+  transition: all var(--dur-fast) var(--ease);
+}
+.modal .btn-primary:hover,
+.modal button[type="submit"]:not(.btn-danger):hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+.modal .btn-primary:active,
+.modal button[type="submit"]:not(.btn-danger):active {
+  transform: translateY(1px) scale(0.97);
+}
+
+.modal input[type="file"]::file-selector-button {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: var(--space-3);
+  transition: all var(--dur-fast) var(--ease);
+}
+.modal input[type="file"]::file-selector-button:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* -------------------------------------------------------------- accounts */
+
+.auth-slot {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Modern User Chip / Account Pill on the right-hand side */
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px 10px 3px 4px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+.user-chip:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+}
+
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.auth-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-sm);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-signout-btn {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  padding: 2px 4px 2px 8px;
+  margin-left: 2px;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1.2;
+  transition: color var(--dur-fast) var(--ease);
+}
+.user-signout-btn:hover {
+  color: var(--danger);
+  text-decoration: underline;
+}
+.user-signout-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.btn-signin {
+  display: inline-flex;
+  align-items: center;
+}
+
+.auth-card {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 40px -8px rgba(15, 23, 42, 0.12),
+              0 0 0 1px rgba(15, 23, 42, 0.05);
+  padding: var(--space-6);
+  max-width: 440px;
+}
+.auth-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  flex-wrap: wrap;
+}
+.auth-actions .btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
+}
+.auth-actions .btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+/* ---------------------------------------------------- featured hero (home) */
+
+.featured-hero {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  min-height: 480px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 0);
+  background-size: var(--grid-size) var(--grid-size);
+}
+.featured-hero[hidden] { display: none; }
+
+.featured-hero #featured-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+.featured-hero #featured-svg.panning { cursor: grabbing; }
+.featured-hero .node-card { cursor: pointer; }
+
+/* Site actions, overlaid so they're reachable without scrolling past the
+   hero. Same actions and the same chrome as .page-header-actions below.
+   Wrapping matters here: the row is right-anchored, so a narrow window drops
+   items onto a second line instead of pushing them off the left edge. */
+/* Site-wide persistent top-right actions (always stays in top right across featured and browse) */
+.site-header-actions,
+.featured-hero-actions {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-5);
+  z-index: 100;
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.site-header-actions > *,
+.featured-hero-actions > * {
+  pointer-events: auto;
+}
+
+.site-header-actions .auth-slot,
+.featured-hero-actions .auth-slot {
+  display: inline-flex;
+  align-items: center;
+}
+
+.site-header-actions .btn-primary,
+.featured-hero-actions .btn-primary,
+.site-header-actions .linkish,
+.featured-hero-actions .linkish { text-shadow: var(--halo); }
+
+/* Bottom left, the one corner of the hero nothing else claims: the actions
+   sit top right, the tree's title and blurb top left, and the scroll hint
+   bottom right. Overriding both of .zoom-controls' own insets, not just
+   adding to them, or it would keep its top-right anchor as well. */
+.featured-hero .zoom-controls {
+  top: auto;
+  right: auto;
+  bottom: var(--space-5);
+  left: var(--space-5);
+}
+
+.featured-hero-overlay {
+  position: absolute;
+  left: var(--space-5);
+  top: var(--space-5);
+  max-width: min(480px, calc(100% - var(--space-7)));
+  pointer-events: none; /* let clicks fall through to the graph behind... */
+}
+.featured-hero-overlay > * { pointer-events: auto; } /* ...except its content */
+
+.featured-hero-overlay h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xl);
+  text-shadow: var(--halo);
+  color: var(--text);
+}
+.featured-hero-overlay p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  text-shadow: var(--halo);
+}
+.featured-hero-overlay .meta {
+  margin: var(--space-3) 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-shadow: var(--halo);
+}
+
+@keyframes floatHint {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(5px); }
+}
+
+.featured-scroll-hint {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  z-index: 10;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-shadow: var(--shadow);
+  transition: border-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+.featured-scroll-hint:not(.is-fixed) {
+  animation: floatHint 2.4s ease-in-out infinite;
+}
+.featured-scroll-hint:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-2);
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.featured-scroll-hint:active {
+  transform: translateY(0);
+}
+.featured-scroll-hint.is-fixed {
+  position: fixed;
+  top: calc(var(--space-4) + 48px);
+  right: var(--space-5);
+  bottom: auto;
+  z-index: 90;
+  box-shadow: var(--shadow);
+}
+
+/* ------------------------------------------- full-screen canvas (editor/viewer) */
+
+/* The editor and the viewer are the canvas — chrome floats on top of it.
+   These rules carry an id as well as the class so they outrank the older
+   #graph-wrap styling that used to box the graph into a panel. */
+.tree-fullscreen-wrap,
+#graph-wrap.tree-fullscreen-wrap {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  /* Dot grid: the surface reads as a workspace you arrange things on. */
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 0);
+  background-size: var(--grid-size) var(--grid-size);
+}
+
+.tree-fullscreen-wrap #graph-svg,
+.tree-fullscreen-wrap #viewer-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+.tree-fullscreen-wrap #graph-svg.panning,
+.tree-fullscreen-wrap #viewer-svg.panning { cursor: grabbing; }
+.tree-fullscreen-wrap #graph-svg.linking { cursor: crosshair; }
+
+.tree-overlay-topleft {
+  position: absolute;
+  top: var(--space-5);
+  left: var(--space-5);
+  /* A definite width, not max-width. The description is a textarea that
+     tree.js auto-grows by measuring scrollHeight; with shrink-to-fit the
+     measurement can land before the column has settled, wrapping the text
+     into dozens of lines and freezing that height in place. */
+  width: min(520px, calc(100% - var(--space-7)));
+  z-index: 10;
+  pointer-events: none;
+}
+.tree-overlay-topleft > * { pointer-events: auto; }
+
+.tree-overlay-topleft .back-link {
+  display: inline-block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+  text-shadow: var(--halo);
+}
+
+.tree-overlay-topleft .tree-title,
+.tree-overlay-topleft .inline-title {
+  font-size: var(--text-xl);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  margin-bottom: var(--space-1);
+  text-shadow: var(--halo);
+  color: var(--text);
+}
+
+.tree-overlay-topleft .tree-desc,
+.tree-overlay-topleft .inline-desc {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+  text-shadow: var(--halo);
+}
+
+.tree-overlay-topleft .meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: var(--space-2) 0 0;
+  text-shadow: var(--halo);
+}
+
+.tree-overlay-topright {
+  position: absolute;
+  top: var(--space-5);
+  right: var(--space-5);
+  z-index: 10;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.tree-overlay-topright .auth-slot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-2);
+}
+
+.tree-fullscreen-wrap .zoom-controls {
+  top: calc(var(--space-5) + 46px);
+  right: var(--space-5);
+}
+
+.tree-fullscreen-wrap .legend {
+  position: absolute;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 10;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* The hint belongs with the title and byline, not floating in a corner: it
+   describes the tree you're looking at ("read-only", "click the prerequisite
+   first"), so it reads as the last line of that block. It also keeps the
+   bottom-right corner free, which is where "Browse all trees" sits on the
+   homepage. */
+.tree-overlay-topleft .hint-bar {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-shadow: var(--halo);
+  max-width: 46ch;
+}
+
+/* ------------------------------------------------- in-place title editing */
+
+/* Title, description and author are edited where they sit, so they read as
+   text until touched rather than looking like a form. */
+.inline-title,
+.inline-desc,
+.inline-author {
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  margin-left: -6px; /* keeps the text aligned with everything below it */
+  transition: border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+.inline-title { font-size: var(--text-xl); font-weight: 650; margin-bottom: 2px; }
+.inline-desc { font-size: var(--text-base); color: var(--text-muted); resize: none; overflow: hidden; }
+
+/* Width comes from the size attribute, kept in step with the text in
+   tree.js, so it sits inline without leaving a gap after the name. */
+.inline-author {
+  display: inline-block;
+  width: auto;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  margin-left: -5px;
+}
+
+.inline-title:hover,
+.inline-desc:hover,
+.inline-author:hover { border-color: var(--border-strong); }
+
+.inline-title:focus,
+.inline-desc:focus,
+.inline-author:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+  text-shadow: none;
+}
+
+.inline-title::placeholder,
+.inline-desc::placeholder,
+.inline-author::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+/* A tree you don't own reads as plain text: no hover, no focus ring. */
+.inline-title.readonly,
+.inline-desc.readonly,
+.inline-author.readonly { cursor: default; }
+.inline-title.readonly:hover,
+.inline-desc.readonly:hover,
+.inline-author.readonly:hover { border-color: transparent; }
+.inline-title.readonly:focus,
+.inline-desc.readonly:focus,
+.inline-author.readonly:focus { border-color: transparent; background: none; }
+
+.save-status {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* ----------------------------------------------------------------- glass */
+
+/* Everything that floats over the canvas shares one treatment. The solid
+   background comes first as the fallback; only browsers that can actually
+   blur get the translucent version, so there's never unreadable text over a
+   see-through panel. */
+.zoom-controls,
+.tree-fullscreen-wrap .legend,
+.featured-scroll-hint,
+.search-dropdown,
+.toast,
+.side-panel {
+  background: var(--surface);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .zoom-controls,
+  .tree-fullscreen-wrap .legend,
+  .featured-scroll-hint,
+  .search-dropdown,
+  .toast,
+  .side-panel {
+    background: var(--glass-bg);
+    border-color: var(--glass-border);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  }
+}
+
+/* ----------------------------------------------------------------- graph */
+
+@keyframes flowDash {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes linkWireFlow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { filter: drop-shadow(0 0 3px var(--accent)); }
+  50% { filter: drop-shadow(0 0 10px var(--accent)); }
+}
+
+.zoom-controls {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 5;
+  display: flex;
+  gap: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  box-shadow: var(--shadow-sm);
+}
+.zoom-controls .btn {
+  min-width: 34px;
+  border-color: transparent;
+  background: none;
+  padding: 6px 8px;
+  font-size: var(--text-md);
+  line-height: 1;
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+.zoom-controls .btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+.zoom-controls .btn:active {
+  transform: scale(0.88);
+}
+#zoom-fit-btn, #featured-zoom-fit { font-size: var(--text-sm); }
+
+.node-card {
+  fill: var(--surface);
+  stroke: var(--locked);
+  stroke-width: 2px;
+  cursor: grab;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: stroke var(--dur-fast) var(--ease),
+              fill var(--dur-fast) var(--ease),
+              filter var(--dur-fast) var(--ease),
+              transform 0.2s var(--ease-bounce),
+              opacity var(--dur) var(--ease);
+}
+.node-card:hover:not(.is-dragging) {
+  filter: drop-shadow(0 6px 16px rgba(15, 23, 42, 0.14));
+  transform: scale(1.02);
+}
+.node-card.is-dragging {
+  cursor: grabbing !important;
+  transform: scale(1.04);
+  filter: drop-shadow(0 16px 32px rgba(15, 23, 42, 0.26)) !important;
+  stroke: var(--accent) !important;
+  stroke-width: 2.5px !important;
+}
+.node-card.link-candidate-snap {
+  stroke: var(--accent) !important;
+  stroke-width: 3px !important;
+  transform: scale(1.03);
+  animation: pulseCandidate 0.8s ease-in-out infinite alternate;
+}
+@keyframes pulseCandidate {
+  from { filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.4)); }
+  to { filter: drop-shadow(0 0 16px rgba(37, 99, 235, 0.75)); }
+}
+.node-card.unlocked { stroke: var(--unlocked); }
+.node-card.unlocked:hover:not(.is-dragging) {
+  filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.38));
+}
+.node-card.selected {
+  stroke: var(--selected);
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 10px rgba(180, 83, 9, 0.45));
+}
+
+.node-label {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+.node-sublabel {
+  fill: var(--text-muted);
+  font-size: 11px;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.edge-line {
+  stroke: var(--locked);
+  stroke-width: 2px;
+  fill: none;
+  marker-end: url(#arrowhead);
+  transition: stroke var(--dur-fast) var(--ease),
+              opacity var(--dur) var(--ease),
+              stroke-width var(--dur-fast) var(--ease);
+}
+.edge-line.active { stroke: var(--accent); }
+.edge-line.hit {
+  stroke: transparent;
+  stroke-width: 14px;
+  cursor: pointer;
+}
+
+/* Pathway illumination */
+.graph-has-highlight .node-card {
+  opacity: 0.25;
+}
+.graph-has-highlight .node-label,
+.graph-has-highlight .node-sublabel {
+  opacity: 0.25;
+}
+.graph-has-highlight .edge-line:not(.hit) {
+  opacity: 0.12;
+}
+
+.graph-has-highlight .node-card.highlight-focus {
+  opacity: 1;
+  stroke: var(--selected);
+  stroke-width: 3px;
+  filter: drop-shadow(0 2px 10px rgba(180, 83, 9, 0.45));
+}
+.graph-has-highlight .node-card.highlight-upstream {
+  opacity: 1;
+  stroke: var(--accent);
+  stroke-width: 2.5px;
+  filter: drop-shadow(0 2px 8px rgba(37, 99, 235, 0.4));
+}
+.graph-has-highlight .node-card.highlight-downstream {
+  opacity: 1;
+  stroke: #10b981;
+  stroke-width: 2.5px;
+  filter: drop-shadow(0 2px 8px rgba(16, 185, 129, 0.4));
+}
+.graph-has-highlight g.highlight-node .node-label,
+.graph-has-highlight g.highlight-node .node-sublabel {
+  opacity: 1;
+}
+
+.graph-has-highlight .edge-line.path-upstream {
+  opacity: 1;
+  stroke: var(--accent);
+  stroke-width: 2.5px;
+  stroke-dasharray: 6 3;
+  animation: flowDash 0.8s linear infinite;
+  marker-end: url(#arrowhead-accent);
+}
+.graph-has-highlight .edge-line.path-merged {
+  stroke-width: 3px;
+}
+.graph-has-highlight .node-card.highlight-merged {
+  stroke-width: 3px;
+}
+.graph-has-highlight .edge-line.path-downstream {
+  opacity: 1;
+  stroke: #10b981;
+  stroke-width: 2.5px;
+  stroke-dasharray: 6 3;
+  animation: flowDash 0.8s linear infinite;
+  marker-end: url(#arrowhead-green);
+}
+
+/* Live linking mode rubber-band wire */
+.link-wire-preview {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5px;
+  stroke-dasharray: 6 4;
+  animation: linkWireFlow 0.6s linear infinite;
+  pointer-events: none;
+  filter: drop-shadow(0 0 5px var(--accent));
+  marker-end: url(#arrowhead-accent);
+}
+
+.legend {
+  display: flex;
+  gap: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+.legend .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: var(--space-2);
+  vertical-align: -1px;
+  border: 2px solid;
+}
+.swatch.locked { border-color: var(--locked); background: var(--surface); }
+.swatch.unlocked { border-color: var(--unlocked); background: var(--surface); }
+
+/* ------------------------------------------------------------ side panel */
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 360px;
+  max-width: 90vw;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform var(--dur-slow) cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 50;
+}
+.side-panel.open { transform: translateX(0); }
+.side-panel h2 { margin: 0 var(--space-6) var(--space-2) 0; font-size: var(--text-lg); color: var(--text); }
+
+.side-panel .close-btn {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  background: none;
+  border: none;
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: transform 0.25s var(--ease),
+              color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+.side-panel .close-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  transform: rotate(90deg) scale(1.15);
+}
+
+.panel-section {
+  margin-top: var(--space-5);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.side-panel.open .panel-section {
+  opacity: 1;
+  transform: translateY(0);
+}
+.side-panel.open .panel-section:nth-of-type(1) { transition-delay: 80ms; }
+.side-panel.open .panel-section:nth-of-type(2) { transition-delay: 140ms; }
+.side-panel.open .panel-section:nth-of-type(3) { transition-delay: 200ms; }
+
+.panel-section h3 {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2);
+}
+
+.prereq-list,
+.unlock-list { list-style: none; padding: 0; margin: 0; font-size: var(--text-base); }
+.prereq-list li,
+.unlock-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  margin-right: calc(-1 * var(--space-2));
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.prereq-list li.interactive:hover,
+.unlock-list li.interactive:hover {
+  background: var(--surface-2);
+  color: var(--accent);
+  transform: translateX(4px);
+  cursor: pointer;
+}
+.prereq-list li:last-child,
+.unlock-list li:last-child { border-bottom: none; }
+
+/* Drag and drop overlay */
+.drop-zone-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+.drop-zone-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.drop-zone-box {
+  border: 3px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7) var(--space-8);
+  text-align: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  box-shadow: 0 8px 32px rgba(37, 99, 235, 0.15);
+  animation: modalScaleIn 0.3s var(--ease-bounce);
+}
+
+/* ----------------------------------------------------------------- toast */
+
+.toast {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  transform: translateX(-50%) translateY(var(--space-2)) scale(0.95);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-base);
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease), transform var(--dur-slow) var(--ease-bounce);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+
+/* ------------------------------------------------------------ responsive */
+
+/* The legend and the hint bar share the bottom edge. The hint is capped at
+   520px and the legend runs to ~355px, so above 1000px they cannot meet;
+   below it the legend gives way, since the node sublabels ("Start here",
+   "Needs 2") already say what the swatches say. */
+@media (max-width: 1000px) {
+  .tree-fullscreen-wrap .legend { display: none; }
+}
+
+@media (max-width: 720px) {
+  .container { padding: var(--space-5) var(--space-4) var(--space-7); }
+  .page-header { flex-direction: column; align-items: stretch; padding-right: 0; }
+  .page-header-actions { flex-wrap: wrap; }
+  .tree-grid { grid-template-columns: 1fr; }
+
+  /* On a phone the floating chrome has no room to sit side by side, so the
+     zoom cluster leaves the header band entirely — it stacks against the
+     right edge at mid-height, where nothing else is competing for space.
+     The text overlays then stop short of it rather than running underneath. */
+  .tree-fullscreen-wrap .zoom-controls {
+    top: 50%;
+    right: var(--space-3);
+    transform: translateY(-50%);
+    flex-direction: column;
+  }
+
+  /* The hero's cluster keeps its own corner and only moves in with the
+     smaller inset — the bottom left is as free on a phone as it is here. */
+  .featured-hero .zoom-controls {
+    bottom: var(--space-3);
+    left: var(--space-3);
+  }
+
+  .site-header-actions,
+  .featured-hero-actions {
+    top: var(--space-3);
+    right: var(--space-3);
+    gap: var(--space-2);
+  }
+  .site-header-actions .btn,
+  .featured-hero-actions .btn {
+    padding: 6px 10px;
+    font-size: var(--text-sm);
+  }
+  .site-header-actions .user-chip,
+  .featured-hero-actions .user-chip {
+    padding: 2px 8px 2px 3px;
+    font-size: var(--text-xs);
+  }
+  .site-header-actions .user-avatar,
+  .featured-hero-actions .user-avatar {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  /* Hero's text starts below the persistent top actions */
+  .featured-hero-overlay { top: calc(var(--space-3) + 54px); }
+
+  .featured-scroll-hint { right: var(--space-3); bottom: var(--space-3); }
+  .featured-scroll-hint.is-fixed {
+    top: calc(var(--space-3) + 38px);
+    right: var(--space-3);
+    bottom: auto;
+  }
+
+  .tree-overlay-topleft {
+    top: var(--space-3);
+    left: var(--space-3);
+    width: calc(100% - 76px);
+  }
+  .tree-overlay-topright { top: auto; bottom: var(--space-3); right: var(--space-3); left: var(--space-3); justify-content: flex-start; }
+  /* The hint now flows inside the top-left column, so it can no longer
+     collide with anything and stays visible on a phone. */
+}
+
+/* Honour a reduced-motion preference: keep every end state, drop the travel. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .tree-card:hover { transform: none; }
+}

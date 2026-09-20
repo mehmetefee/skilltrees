@@ -1,0 +1,116 @@
+{
+  "format": "skilltree",
+  "version": 1,
+  "title": "Home Bread Baking",
+  "description": "From flour and water to a full sourdough loaf.",
+  "author": "Claude",
+  "layout": "manual",
+  "skills": [
+    {
+      "id": "measure-by-weight",
+      "name": "Measure ingredients by weight",
+      "description": "Use a kitchen scale for accurate ratios.",
+      "requires": [],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "sourdough-starter",
+      "name": "Maintain a sourdough starter",
+      "description": "Feed and keep a starter alive and active.",
+      "requires": [],
+      "position": {
+        "x": 200,
+        "y": 200
+      }
+    },
+    {
+      "id": "knead",
+      "name": "Knead dough",
+      "description": "Develop gluten by hand-kneading for 10 minutes.",
+      "requires": [
+        "measure-by-weight"
+      ],
+      "position": {
+        "x": 200,
+        "y": 0
+      }
+    },
+    {
+      "id": "windowpane-test",
+      "name": "Windowpane test",
+      "description": "Check gluten development by stretching dough thin.",
+      "requires": [
+        "knead"
+      ],
+      "position": {
+        "x": 400,
+        "y": -80
+      }
+    },
+    {
+      "id": "shape-boule",
+      "name": "Shape a boule",
+      "description": "Form a tight, round loaf.",
+      "requires": [
+        "knead"
+      ],
+      "position": {
+        "x": 400,
+        "y": 80
+      }
+    },
+    {
+      "id": "bulk-fermentation",
+      "name": "Bulk fermentation",
+      "description": "Let dough rise as a whole mass before shaping.",
+      "requires": [
+        "shape-boule",
+        "sourdough-starter"
+      ],
+      "position": {
+        "x": 600,
+        "y": 40
+      }
+    },
+    {
+      "id": "score-loaf",
+      "name": "Score a loaf",
+      "description": "Cut the surface so it expands predictably in the oven.",
+      "requires": [
+        "bulk-fermentation"
+      ],
+      "position": {
+        "x": 800,
+        "y": -40
+      }
+    },
+    {
+      "id": "dutch-oven-bake",
+      "name": "Bake in a dutch oven",
+      "description": "Use steam-trapping to get an artisan crust.",
+      "requires": [
+        "bulk-fermentation"
+      ],
+      "position": {
+        "x": 800,
+        "y": 120
+      }
+    },
+    {
+      "id": "sourdough-loaf",
+      "name": "Bake a full sourdough loaf",
+      "description": "Combine everything into a finished artisan loaf.",
+      "requires": [
+        "score-loaf",
+        "dutch-oven-bake"
+      ],
+      "position": {
+        "x": 1000,
+        "y": 40
+      }
+    }
+  ]
+}
