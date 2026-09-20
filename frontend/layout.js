@@ -319,6 +319,42 @@
     return computeRoutes(nodes, edges).positions;
   }
 
+  // ---- the shape of a drawn edge ----
+
+  // An edge leaves the right of one box and arrives at the left of another,
+  // and the control points sit level with each end so it departs and lands
+  // flat. How far they reach along x decides how the line looks: too little
+  // and it hooks tightly against the boxes, too much and it flattens into a
+  // shelf.
+  //
+  // Half the run is the natural choice, and it is what this used to do — but
+  // when two nodes sit close together with a big drop between them, half of
+  // a short run is a couple of pixels and the line kinks at both ends. So the
+  // reach has a floor, and is capped at the run itself: keeping it within the
+  // gap is what lets the reserved rows and the detours promise the clearance
+  // they do, since the curve then never strays outside the x it was given.
+  const CURVE_MIN_REACH = 36;
+
+  function controlPoints(a, b) {
+    const run = Math.abs(b.x - a.x);
+    const direction = b.x < a.x ? -1 : 1;
+    const reach = Math.min(run, Math.max(run / 2, CURVE_MIN_REACH));
+    return [a.x + direction * reach, b.x - direction * reach];
+  }
+
+  // The path an edge is drawn along, shared by every renderer so the shape
+  // tested for clearance above is the shape that reaches the screen.
+  function edgeCurve(points) {
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i + 1 < points.length; i++) {
+      const from = points[i];
+      const to = points[i + 1];
+      const [c1x, c2x] = controlPoints(from, to);
+      d += ` C ${c1x} ${from.y}, ${c2x} ${to.y}, ${to.x} ${to.y}`;
+    }
+    return d;
+  }
+
   // ---- routing for coordinates this file did not choose ----
 
   // How far a detour keeps away from the box it is avoiding.
@@ -336,11 +372,11 @@
   const ROUTE_BUDGET = 100000;
 
   function curveEntersBox(a, b, box) {
-    const midX = (a.x + b.x) / 2;
+    const [c1x, c2x] = controlPoints(a, b);
     for (let s = 0; s <= CURVE_SAMPLES; s++) {
       const t = s / CURVE_SAMPLES;
       const u = 1 - t;
-      const x = u * u * u * a.x + 3 * u * u * t * midX + 3 * u * t * t * midX + t * t * t * b.x;
+      const x = u * u * u * a.x + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * b.x;
       const y = u * u * u * a.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t * t * t * b.y;
       if (x > box.x1 && x < box.x2 && y > box.y1 && y < box.y2) return true;
     }
@@ -479,6 +515,8 @@
     computeLayout,
     computeRoutes,
     routeAroundNodes,
+    edgeCurve,
+    controlPoints,
     NODE_W,
     NODE_H,
     SPACING_X,

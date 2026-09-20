@@ -92,6 +92,17 @@ for an English interface. `.woff2` has its own entry in the MIME table in
 `server.js` and is served `immutable`, since a font's name changes when its
 contents do.
 
+**The curve an edge is drawn along lives in `layout.js`, not in the
+renderers.** `edgeCurve()` builds the path and `controlPoints()` decides how
+far the control points reach along x; `edgePath()` in `app.js` is a wrapper
+kept because all three renderers call it by that name. They share one
+definition on purpose: the clearance checks below test the shape that
+actually reaches the screen, so a change to the drawing is a change to what
+counts as a collision. Reach is half the run, floored at 36px and capped at
+the run — the floor stops a short gap with a big drop from kinking at both
+ends, and the cap is what keeps the curve inside the x it was given, which is
+what the reserved rows and the detours rely on.
+
 **Manual trees are routed at render time, by `routeAroundNodes()`.** The lane
 pass above only protects auto layouts, because it is the thing that chose
 where the nodes went. A tree stored as `'manual'` carries whatever

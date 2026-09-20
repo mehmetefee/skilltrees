@@ -187,15 +187,11 @@ function escapeHtml(str) {
 // An SVG path through a list of points, curved rather than kinked. Edges that
 // skip a column come with waypoints from layout.js routing them around what
 // sits in between; short ones are just the two endpoints and curve as before.
+// The curve itself lives in layout.js, with the clearance checks that have to
+// test the same shape the screen gets. This stays because all three renderers
+// call it by this name.
 function edgePath(points) {
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i + 1 < points.length; i++) {
-    const from = points[i];
-    const to = points[i + 1];
-    const midX = (from.x + to.x) / 2;
-    d += ` C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`;
-  }
-  return d;
+  return SkillTreeLayout.edgeCurve(points);
 }
 
 // Color palette for separate prerequisite paths
