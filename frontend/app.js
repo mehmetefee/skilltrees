@@ -286,40 +286,44 @@ function ensureArrowheadMarker(containerEl, colorHex) {
 }
 
 // Highlights upstream prerequisites and downstream unlocks on hover/selection
-function highlightGraphPath(targetSkillId, treeData, containerEl) {
-  if (!containerEl) return;
+// ---------- path analysis (pure graph work, no DOM) ----------
 
-  function clearAllHighlights() {
-    containerEl.classList.remove('graph-has-highlight');
-    containerEl.querySelectorAll('.node-card').forEach((el) => {
-      el.classList.remove('highlight-focus', 'highlight-upstream', 'highlight-downstream', 'highlight-merged');
-      el.style.stroke = '';
-      el.style.filter = '';
-    });
-    containerEl.querySelectorAll('path.edge-line').forEach((el) => {
-      el.classList.remove('path-upstream', 'path-downstream', 'path-merged');
-      el.style.stroke = '';
-      el.style.markerEnd = '';
-    });
-    containerEl.querySelectorAll('.highlight-node').forEach((el) => el.classList.remove('highlight-node'));
+// Hovering down a list of prerequisites asks about a dozen different skills
+// over the same unchanged graph, and every question used to rebuild the
+// adjacency index and re-run four traversals before touching the DOM. That
+// work is cached here, at the two rates it goes stale: the index depends
+// only on the tree, the traversals also on which skill is being asked about.
+//
+// The cache key is the tree object itself. Every structural edit in tree.js
+// goes through loadTree(), which replaces that object wholesale, so a changed
+// graph is always a new object and gets a new entry. The edge-array check is
+// a second line of defence, in case something later edits a tree in place.
+const pathAnalysisCache = new WeakMap();
+
+function analyzeGraphPath(targetStr, treeData) {
+  let entry = pathAnalysisCache.get(treeData);
+  if (!entry || entry.edges !== treeData.edges || entry.edgeCount !== treeData.edges.length) {
+    entry = {
+      edges: treeData.edges,
+      edgeCount: treeData.edges.length,
+      index: buildEdgeIndex(treeData),
+      byTarget: new Map(),
+    };
+    pathAnalysisCache.set(treeData, entry);
   }
 
-  if (!targetSkillId || !treeData || !Array.isArray(treeData.edges)) {
-    clearAllHighlights();
-    return;
+  let analysis = entry.byTarget.get(targetStr);
+  if (!analysis) {
+    analysis = computePathAnalysis(targetStr, treeData, entry.index);
+    entry.byTarget.set(targetStr, analysis);
   }
+  return analysis;
+}
 
-  const targetStr = String(targetSkillId);
-
-  // Check if target node exists in skills
-  if (Array.isArray(treeData.skills) && treeData.skills.length > 0) {
-    const exists = treeData.skills.some((s) => String(s.id) === targetStr);
-    if (!exists) {
-      clearAllHighlights();
-      return;
-    }
-  }
-
+// Shared with every caller that asks about the same skill, so the sets and
+// maps that come back are read-only: the DOM pass below only ever queries
+// them.
+function buildEdgeIndex(treeData) {
   // 1. Build adjacency list for graph traversal
   const inEdges = new Map();  // toId -> [{ fromId, toId, edgeKey, edgeIdx }]
   const outEdges = new Map(); // fromId -> [{ fromId, toId, edgeKey, edgeIdx }]
@@ -338,6 +342,11 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
     if (!outEdges.has(from)) outEdges.set(from, []);
     outEdges.get(from).push(edgeObj);
   });
+  return { inEdges, outEdges };
+}
+
+function computePathAnalysis(targetStr, treeData, index) {
+  const { inEdges, outEdges } = index;
 
   // 2. Identify all upstream nodes and edges leading to targetStr (reverse BFS)
   const upstreamNodes = new Set();
@@ -495,24 +504,6 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
     }
   }
 
-  function getColorForOrigins(originsSet) {
-    if (!originsSet || originsSet.size === 0) {
-      return { color: PREREQ_PATH_COLORS[0], isMerged: false };
-    }
-    if (originsSet.size === 1) {
-      const idx = Array.from(originsSet)[0];
-      return {
-        color: PREREQ_PATH_COLORS[idx % PREREQ_PATH_COLORS.length],
-        isMerged: false,
-      };
-    }
-    const hexList = Array.from(originsSet).map((idx) => PREREQ_PATH_COLORS[idx % PREREQ_PATH_COLORS.length]);
-    return {
-      color: blendHexColors(hexList),
-      isMerged: true,
-    };
-  }
-
   // 5. Traverse downstream (unlocks via forward BFS from targetStr)
   const downstreamNodes = new Set();
   const downstreamEdgeKeys = new Set();
@@ -531,6 +522,78 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
       }
     }
   }
+
+  return {
+    upstreamNodes,
+    upstreamEdgeKeys,
+    nodeOrigins,
+    edgeOrigins,
+    downstreamNodes,
+    downstreamEdgeKeys,
+  };
+}
+
+// Which colour a node or edge takes from the streams that reach it.
+  function getColorForOrigins(originsSet) {
+    if (!originsSet || originsSet.size === 0) {
+      return { color: PREREQ_PATH_COLORS[0], isMerged: false };
+    }
+    if (originsSet.size === 1) {
+      const idx = Array.from(originsSet)[0];
+      return {
+        color: PREREQ_PATH_COLORS[idx % PREREQ_PATH_COLORS.length],
+        isMerged: false,
+      };
+    }
+    const hexList = Array.from(originsSet).map((idx) => PREREQ_PATH_COLORS[idx % PREREQ_PATH_COLORS.length]);
+    return {
+      color: blendHexColors(hexList),
+      isMerged: true,
+    };
+  }
+
+function highlightGraphPath(targetSkillId, treeData, containerEl) {
+  if (!containerEl) return;
+
+  function clearAllHighlights() {
+    containerEl.classList.remove('graph-has-highlight');
+    containerEl.querySelectorAll('.node-card').forEach((el) => {
+      el.classList.remove('highlight-focus', 'highlight-upstream', 'highlight-downstream', 'highlight-merged');
+      el.style.stroke = '';
+      el.style.filter = '';
+    });
+    containerEl.querySelectorAll('path.edge-line').forEach((el) => {
+      el.classList.remove('path-upstream', 'path-downstream', 'path-merged');
+      el.style.stroke = '';
+      el.style.markerEnd = '';
+    });
+    containerEl.querySelectorAll('.highlight-node').forEach((el) => el.classList.remove('highlight-node'));
+  }
+
+  if (!targetSkillId || !treeData || !Array.isArray(treeData.edges)) {
+    clearAllHighlights();
+    return;
+  }
+
+  const targetStr = String(targetSkillId);
+
+  // Check if target node exists in skills
+  if (Array.isArray(treeData.skills) && treeData.skills.length > 0) {
+    const exists = treeData.skills.some((s) => String(s.id) === targetStr);
+    if (!exists) {
+      clearAllHighlights();
+      return;
+    }
+  }
+
+  const {
+    upstreamNodes,
+    upstreamEdgeKeys,
+    nodeOrigins,
+    edgeOrigins,
+    downstreamNodes,
+    downstreamEdgeKeys,
+  } = analyzeGraphPath(targetStr, treeData);
 
   containerEl.classList.add('graph-has-highlight');
 
@@ -717,7 +780,7 @@ async function loadFeatured(summary) {
       featuredRoutes = laidOut.routes;
     } else {
       featuredPositions = new Map(tree.skills.map((s) => [s.id, { x: s.pos_x, y: s.pos_y }]));
-      featuredRoutes = null; // manual coordinates are wherever someone put them
+      featuredRoutes = null; // manual coordinates are routed per render below
     }
 
     featuredViewBox = computeFeaturedBounds();
@@ -807,6 +870,17 @@ function renderFeatured() {
   const edgesLayer = document.createElementNS(ns, 'g');
   const nodesLayer = document.createElementNS(ns, 'g');
 
+  // Auto layouts already reserved a row for every edge that skips a column.
+  // Manual coordinates are wherever the author left them — or wherever the
+  // hero's own drag has moved them — so their detours are worked out here.
+  const edgeRoutes =
+    featuredTree.layout === 'auto'
+      ? featuredRoutes
+      : SkillTreeLayout.routeAroundNodes(
+          featuredPositions,
+          featuredTree.edges.map((e) => ({ from: e.prereq_skill_id, to: e.skill_id }))
+        );
+
   featuredTree.edges.forEach((edge, index) => {
     const from = featuredPositions.get(edge.prereq_skill_id);
     const to = featuredPositions.get(edge.skill_id);
@@ -816,7 +890,7 @@ function renderFeatured() {
       'd',
       edgePath([
         { x: from.x + NODE_W, y: from.y + NODE_H / 2 },
-        ...((featuredRoutes && featuredRoutes.get(index)) || []),
+        ...((edgeRoutes && edgeRoutes.get(index)) || []),
         { x: to.x, y: to.y + NODE_H / 2 },
       ])
     );

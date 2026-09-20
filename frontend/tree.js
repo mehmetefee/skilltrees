@@ -404,6 +404,18 @@ function render() {
 
   const hasPrereq = skillsWithPrereqs();
 
+  // In auto mode the layout already reserved a row for every edge that skips
+  // a column, so autoRoutes is the answer. Manual coordinates are wherever
+  // someone dragged them, and nothing there keeps a node out of a line's
+  // way — so the detours are worked out here, from the positions as they
+  // stand. That has to happen on every render: a drag moves the obstacles.
+  const edgeRoutes = isAuto()
+    ? autoRoutes
+    : SkillTreeLayout.routeAroundNodes(
+        new Map(tree.skills.map((s) => [s.id, { x: s.pos_x, y: s.pos_y }])),
+        tree.edges.map((e) => ({ from: e.prereq_skill_id, to: e.skill_id }))
+      );
+
   // Edges
   edgesLayer.innerHTML = '';
   tree.edges.forEach((edge, index) => {
@@ -413,7 +425,7 @@ function render() {
 
     const d = edgePath([
       { x: from.pos_x + NODE_W, y: from.pos_y + NODE_H / 2 },
-      ...((autoRoutes && autoRoutes.get(index)) || []),
+      ...((edgeRoutes && edgeRoutes.get(index)) || []),
       { x: to.pos_x, y: to.pos_y + NODE_H / 2 },
     ]);
 

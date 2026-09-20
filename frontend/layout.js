@@ -319,5 +319,169 @@
     return computeRoutes(nodes, edges).positions;
   }
 
-  return { computeLayout, computeRoutes, NODE_W, NODE_H, SPACING_X, SPACING_Y };
+  // ---- routing for coordinates this file did not choose ----
+
+  // How far a detour keeps away from the box it is avoiding.
+  const CLEARANCE = 14;
+  // Curve samples per segment when testing whether a path enters a box. The
+  // drawn edge is a cubic whose control points share their y with the ends,
+  // so it can sag away from the straight chord — testing the chord alone
+  // would miss a box the visible line actually crosses.
+  const CURVE_SAMPLES = 24;
+  // Box tests one call may spend. This runs on every render, and a render is
+  // what a drag pays for each frame, so the ceiling is set by what fits in a
+  // frame rather than by how much routing a graph could use: measured, 400k
+  // tests cost about 60 ms on a 1000-skill tree, and this keeps the worst
+  // case near 15 ms. Past it the remaining edges keep the line they had.
+  const ROUTE_BUDGET = 100000;
+
+  function curveEntersBox(a, b, box) {
+    const midX = (a.x + b.x) / 2;
+    for (let s = 0; s <= CURVE_SAMPLES; s++) {
+      const t = s / CURVE_SAMPLES;
+      const u = 1 - t;
+      const x = u * u * u * a.x + 3 * u * u * t * midX + 3 * u * t * t * midX + t * t * t * b.x;
+      const y = u * u * u * a.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t * t * t * b.y;
+      if (x > box.x1 && x < box.x2 && y > box.y1 && y < box.y2) return true;
+    }
+    return false;
+  }
+
+  // Waypoints that steer each edge around any node box standing in its way.
+  //
+  // computeRoutes only has to think about this for edges that skip a column,
+  // because it chose the coordinates and put every node in a row — but a tree
+  // stored as 'manual' carries whatever positions its author dragged things
+  // to, and nothing there keeps a box out of a line's path. This walks the
+  // obstacles an edge would cross from left to right and lifts the line over
+  // or drops it under each one, whichever is nearer to where the line was
+  // already going.
+  //
+  //   positions: Map of id -> { x, y }, the top-left of each node box
+  //   edges:     [{ from, to }] in the order they will be drawn
+  //
+  // Returns a Map of edge index -> waypoints, in the same shape computeRoutes
+  // returns, so a renderer can use the two interchangeably. Edges with a
+  // clear run get no entry and stay the single smooth curve they were.
+  function routeAroundNodes(positions, edges) {
+    const routes = new Map();
+    if (!positions || !edges) return routes;
+
+    const boxes = [];
+    for (const [id, p] of positions) {
+      boxes.push({ id, x1: p.x, y1: p.y, x2: p.x + NODE_W, y2: p.y + NODE_H });
+    }
+    boxes.sort((a, b) => a.x1 - b.x1);
+
+    let spent = 0;
+    edges.forEach((edge, index) => {
+      const from = positions.get(edge.from);
+      const to = positions.get(edge.to);
+      if (!from || !to) return;
+
+      const start = { x: from.x + NODE_W, y: from.y + NODE_H / 2 };
+      const end = { x: to.x, y: to.y + NODE_H / 2 };
+      if (end.x === start.x) return; // nothing to travel along
+
+      // Edges are not all left-to-right. A tree stored as 'manual' can put a
+      // prerequisite to the right of the skill it unlocks, and those
+      // backwards edges are the long ones that sweep across the drawing and
+      // meet the most in their way — so the detour is built in whichever
+      // direction this edge actually travels.
+      const step = end.x > start.x ? 1 : -1;
+      const lo = Math.min(start.x, end.x) + 1;
+      const hi = Math.max(start.x, end.x) - 1;
+      const clampToRun = (x) => Math.min(Math.max(x, lo), hi);
+
+      // Everything in the way is treated as one obstruction, and the line is
+      // taken over or under the whole of it in a single lift.
+      //
+      // Dodging one box at a time is what fails here: stepping under one node
+      // drops the line into the next, and by then the way around that one is
+      // already behind the pen. Growing a single group and re-checking the
+      // whole path against it converges instead of zigzagging — and it looks
+      // like the reserved rows an automatic layout produces, rather than a
+      // line picking its way between boxes.
+      const cluster = new Map();
+      let waypoints = [];
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const path = [start, ...waypoints, end];
+        let grew = false;
+        for (let i = 0; i + 1 < path.length && spent <= ROUTE_BUDGET; i++) {
+          for (const box of boxes) {
+            if (box.id === edge.from || box.id === edge.to) continue;
+            if (spent > ROUTE_BUDGET) break;
+            spent++;
+            if (!curveEntersBox(path[i], path[i + 1], box)) continue;
+            if (!cluster.has(box.id)) {
+              cluster.set(box.id, box);
+              grew = true;
+            }
+          }
+        }
+        if (!grew) break;
+
+        const group = [...cluster.values()];
+        let minX = Infinity, maxX = -Infinity, topY = Infinity, bottomY = -Infinity;
+        for (const b of group) {
+          if (b.x1 < minX) minX = b.x1;
+          if (b.x2 > maxX) maxX = b.x2;
+          if (b.y1 < topY) topY = b.y1;
+          if (b.y2 > bottomY) bottomY = b.y2;
+        }
+
+        // The plateau starts a clearance before the group and ends a
+        // clearance after it, so the climb and the descent both happen in
+        // open space rather than alongside a box.
+        const nearX = step > 0 ? minX - CLEARANCE : maxX + CLEARANCE;
+        const farX = step > 0 ? maxX + CLEARANCE : minX - CLEARANCE;
+        const withinRun = (x) => (x - start.x) * step > 0 && (end.x - x) * step > 0;
+        if (!withinRun(farX)) {
+          // No far side to come down on: the group reaches past the end of
+          // this edge, so there is nothing to get around. Leave the line as
+          // it was rather than inventing a worse path for it.
+          waypoints = [];
+          break;
+        }
+
+        // Over or under is not obvious from the geometry — the shorter lift
+        // often runs straight into whatever is stacked on that side. So both
+        // are drawn and the one that ends up crossing fewer boxes wins, with
+        // the smaller deviation breaking a tie.
+        const candidates = [topY - CLEARANCE, bottomY + CLEARANCE].map((candidateY) => {
+          const route = [{ x: nearX, y: candidateY }, { x: farX, y: candidateY }];
+          const path = [start, ...route, end];
+          let crossings = 0;
+          for (let i = 0; i + 1 < path.length && spent <= ROUTE_BUDGET; i++) {
+            for (const box of boxes) {
+              if (box.id === edge.from || box.id === edge.to) continue;
+              if (spent > ROUTE_BUDGET) break;
+              spent++;
+              if (curveEntersBox(path[i], path[i + 1], box)) crossings++;
+            }
+          }
+          const middle = (start.y + end.y) / 2;
+          return { route, crossings, deviation: Math.abs(middle - candidateY) };
+        });
+        candidates.sort((a, b) => a.crossings - b.crossings || a.deviation - b.deviation);
+        waypoints = candidates[0].route;
+        if (candidates[0].crossings === 0) break;
+      }
+
+      if (waypoints.length) routes.set(index, waypoints);
+    });
+
+    return routes;
+  }
+
+  return {
+    computeLayout,
+    computeRoutes,
+    routeAroundNodes,
+    NODE_W,
+    NODE_H,
+    SPACING_X,
+    SPACING_Y,
+  };
 });

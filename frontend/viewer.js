@@ -237,7 +237,7 @@ function loadNotation(notation) {
     } else {
       skills.forEach((s) => positions.set(s.id, { x: s.pos_x, y: s.pos_y }));
     }
-    routes = null;
+    routes = null; // manual coordinates are routed per render, see render()
   }
 
   viewBox = null;
@@ -290,6 +290,14 @@ function render() {
 
   const hasPrereq = new Set(currentTree.edges.map((e) => e.to));
 
+  // Auto layouts already reserved a row for every edge that skips a column.
+  // Manual coordinates are wherever the file put them — or wherever they have
+  // just been dragged to — so their detours are worked out here, per render.
+  const edgeRoutes =
+    currentTree.layout === 'auto'
+      ? routes
+      : SkillTreeLayout.routeAroundNodes(positions, currentTree.edges);
+
   edgesLayer.innerHTML = '';
   currentTree.edges.forEach((edge, index) => {
     const from = positions.get(edge.from);
@@ -298,7 +306,7 @@ function render() {
 
     const d = edgePath([
       { x: from.x + NODE_W, y: from.y + NODE_H / 2 },
-      ...((routes && routes.get(index)) || []),
+      ...((edgeRoutes && edgeRoutes.get(index)) || []),
       { x: to.x, y: to.y + NODE_H / 2 },
     ]);
 

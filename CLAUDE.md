@@ -92,6 +92,26 @@ for an English interface. `.woff2` has its own entry in the MIME table in
 `server.js` and is served `immutable`, since a font's name changes when its
 contents do.
 
+**Manual trees are routed at render time, by `routeAroundNodes()`.** The lane
+pass above only protects auto layouts, because it is the thing that chose
+where the nodes went. A tree stored as `'manual'` carries whatever
+coordinates its author dragged things to, and nothing there keeps a box out
+of a line's way — so all three renderers ask `layout.js` for detours instead,
+from the positions as they currently stand. It runs inside `render()` rather
+than at load, because a drag moves the obstacles every frame.
+
+Two things about it are worth knowing before changing it. It treats
+everything in an edge's way as **one** obstruction and lifts the line over or
+under the whole group, rather than dodging boxes one at a time — stepping
+under one node drops the line into the next, and by then the way around that
+one is already behind the pen. And it is a heuristic, not a solver: on
+layouts that look like an exported auto layout it removes about four fifths
+of the crossings (measured: 51% of edges crossing a node, down to 10%), but
+on freely scattered coordinates it only gets from 63% to about 42%. Closing
+that gap needs real obstacle-avoiding routing — a visibility graph and a path
+search — which is a different piece of work. `ROUTE_BUDGET` caps the cost at
+roughly 15 ms however big the tree is, because a drag pays it per frame.
+
 **There is no create page — `/tree.html` with no `id` is one.** Creating and
 editing are the same screen: the title, description and author are edited in
 place and saved as they're typed (debounced, plus on blur), so there is no
