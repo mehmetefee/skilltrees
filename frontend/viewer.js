@@ -361,9 +361,10 @@ function render() {
     nodesLayer.appendChild(g);
   }
 
-  if (selectedSkillId) {
-    highlightGraphPath(selectedSkillId, currentTree, svg);
-  }
+  // Unconditional: the nodes were just rebuilt, so a hover highlight has lost
+  // its elements while .graph-has-highlight stayed on the <svg>, dimming
+  // everything with nothing lit. Passing null is that missing teardown.
+  highlightGraphPath(selectedSkillId, currentTree, svg);
 }
 
 function toSvgPoint(evt) {
@@ -399,8 +400,27 @@ function attachNodeInteractions(g, skill, pos) {
     startPos = { x: pos.x, y: pos.y };
     g.querySelector('.node-card')?.classList.add('is-dragging');
 
+    // See tree.js: draggingSkillId is what render() reads to decide who wears
+    // .is-dragging, so a release nobody heard would strand that class on the
+    // node permanently. `released` marks a mouseup we actually saw, which is
+    // the only kind that may count as a click.
+    const endDrag = (released) => {
+      if (!dragging) return;
+      dragging = false;
+      draggingSkillId = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('blur', onLost);
+      render();
+      if (released && !moved) {
+        selectedSkillId = skill.id;
+        openSidePanel(skill);
+      }
+    };
+
     const onMove = (ev) => {
       if (!dragging) return;
+      if (ev.buttons === 0) return void endDrag(false); // release we never saw
       const p = toSvgPoint(ev);
       const dx = p.x - startPt.x;
       const dy = p.y - startPt.y;
@@ -409,21 +429,12 @@ function attachNodeInteractions(g, skill, pos) {
       pos.y = startPos.y + dy;
       render();
     };
-
-    const onUp = () => {
-      dragging = false;
-      draggingSkillId = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      render();
-      if (!moved) {
-        selectedSkillId = skill.id;
-        openSidePanel(skill);
-      }
-    };
+    const onUp = () => endDrag(true);
+    const onLost = () => endDrag(false);
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('blur', onLost);
   });
 }
 
@@ -451,14 +462,29 @@ function setupZoomAndPan() {
       startBox: { ...viewBox },
       scaleX: viewBox.w / rect.width,
       scaleY: viewBox.h / rect.height,
+      moved: false,
     };
     svg.classList.add('panning');
   });
 
+  // Whether the pan that just ended moved, or undefined if none was running.
+  const endPan = () => {
+    if (!panState) return undefined;
+    const panned = panState.moved;
+    panState = null;
+    svg.classList.remove('panning');
+    return panned;
+  };
+
   window.addEventListener('mousemove', (e) => {
     if (!panState) return;
+    if (e.buttons === 0) return void endPan();
     const dx = (e.clientX - panState.startClientX) * panState.scaleX;
     const dy = (e.clientY - panState.startClientY) * panState.scaleY;
+    if (Math.abs(e.clientX - panState.startClientX) > 3 ||
+        Math.abs(e.clientY - panState.startClientY) > 3) {
+      panState.moved = true;
+    }
     viewBox = {
       ...panState.startBox,
       minX: panState.startBox.minX - dx,
@@ -468,10 +494,17 @@ function setupZoomAndPan() {
   });
 
   window.addEventListener('mouseup', () => {
-    if (panState) {
-      panState = null;
-      svg.classList.remove('panning');
-    }
+    // Press and release on bare background without moving is a click on
+    // nothing, which is how people expect to drop a selection.
+    if (endPan() === false && selectedSkillId !== null) closeSidePanel();
+  });
+  window.addEventListener('blur', () => endPan());
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (selectedSkillId !== null) closeSidePanel();
   });
 
   document.getElementById('viewer-zoom-in').addEventListener('click', () => zoomAtCenter(0.8));
@@ -524,13 +557,17 @@ function panToSkill(skill) {
   requestAnimationFrame(step);
 }
 
+// Named, because clicking bare background and pressing Escape both mean the
+// same thing as pressing the panel's close button.
+function closeSidePanel() {
+  selectedSkillId = null;
+  highlightGraphPath(null, currentTree, svg);
+  document.getElementById('side-panel').classList.remove('open');
+  render();
+}
+
 function setupSidePanel() {
-  document.getElementById('panel-close').addEventListener('click', () => {
-    selectedSkillId = null;
-    highlightGraphPath(null, currentTree, svg);
-    document.getElementById('side-panel').classList.remove('open');
-    render();
-  });
+  document.getElementById('panel-close').addEventListener('click', closeSidePanel);
 }
 
 function openSidePanel(skill) {

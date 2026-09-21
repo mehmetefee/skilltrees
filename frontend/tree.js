@@ -493,9 +493,13 @@ function render() {
     nodesLayer.appendChild(g);
   }
 
-  if (selectedSkillId) {
-    highlightGraphPath(selectedSkillId, tree, svg);
-  }
+  // Unconditional, and that matters. The node DOM was just thrown away and
+  // rebuilt, so a hover highlight has lost every element it was painted on
+  // while .graph-has-highlight stayed behind on the <svg> — which dims every
+  // node with nothing lit to explain why. The element the pointer was
+  // over is gone too, so no mouseleave is ever coming to clean up. With
+  // nothing selected, passing null here is exactly that missing teardown.
+  highlightGraphPath(selectedSkillId, tree, svg);
 }
 
 function truncate(str, n) {
@@ -673,8 +677,45 @@ function attachNodeInteractions(g, skill) {
     startPos = { x: skill.pos_x, y: skill.pos_y };
     g.querySelector('.node-card')?.classList.add('is-dragging');
 
+    // draggingSkillId is what render() reads to decide who wears
+    // .is-dragging, and ending the drag is the only thing that clears it —
+    // so a release nobody heard (button let go outside the window, tab
+    // switched away mid-drag) used to leave that node scaled up and
+    // accent-stroked for the rest of the session, immune to every later
+    // hover, because render() put the class straight back on each time.
+    //
+    // `released` separates a mouseup we actually saw, which may count as a
+    // click, from an ending we had to infer.
+    const endDrag = async (released) => {
+      if (!dragging) return; // already ended: a second call must be harmless
+      dragging = false;
+      draggingSkillId = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('blur', onLost);
+      render();
+      if (!moved) {
+        if (released) handleNodeClick(skill); // a click needs a release we saw
+        return;
+      }
+      lastPlacedSkillId = skill.id;
+      if (canEdit && skill.id && !isAuto()) {
+        try {
+          await apiFetch(`/skills/${skill.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ pos_x: Math.round(skill.pos_x), pos_y: Math.round(skill.pos_y) }),
+          });
+        } catch (err) {
+          console.error('Failed to save skill position', err);
+        }
+      }
+    };
+
     const onMove = (ev) => {
       if (!dragging) return;
+      // No button held any more, so the release happened somewhere we could
+      // not see it. This move is the first moment we can know that.
+      if (ev.buttons === 0) return void endDrag(false);
       const p = toSvgPoint(ev);
       const dx = p.x - startPt.x;
       const dy = p.y - startPt.y;
@@ -683,30 +724,12 @@ function attachNodeInteractions(g, skill) {
       skill.pos_y = startPos.y + dy;
       render();
     };
-    const onUp = async () => {
-      dragging = false;
-      draggingSkillId = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      render();
-      if (!moved) {
-        handleNodeClick(skill);
-      } else {
-        lastPlacedSkillId = skill.id;
-        if (canEdit && skill.id && !isAuto()) {
-          try {
-            await apiFetch(`/skills/${skill.id}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ pos_x: Math.round(skill.pos_x), pos_y: Math.round(skill.pos_y) }),
-            });
-          } catch (err) {
-            console.error('Failed to save skill position', err);
-          }
-        }
-      }
-    };
+    const onUp = () => endDrag(true);
+    const onLost = () => endDrag(false);
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('blur', onLost);
   });
 
   g.addEventListener('touchstart', () => handleNodeClick(skill), { passive: true });
@@ -912,13 +935,31 @@ function setupZoomAndPan() {
       startBox: { ...viewBox },
       scaleX: viewBox.w / rect.width,
       scaleY: viewBox.h / rect.height,
+      moved: false,
     };
     svg.classList.add('panning');
   });
+  // Returns whether the pan that just ended actually moved, or undefined if
+  // there was no pan in progress. Same hazard as the node drag: a release we
+  // never hear about would otherwise leave the background stuck in its
+  // grabbing cursor and the next stray mousemove would pan without a button
+  // held down.
+  const endPan = () => {
+    if (!panState) return undefined;
+    const panned = panState.moved;
+    panState = null;
+    svg.classList.remove('panning');
+    return panned;
+  };
   window.addEventListener('mousemove', (e) => {
     if (!panState) return;
+    if (e.buttons === 0) return void endPan();
     const dx = (e.clientX - panState.startClientX) * panState.scaleX;
     const dy = (e.clientY - panState.startClientY) * panState.scaleY;
+    if (Math.abs(e.clientX - panState.startClientX) > 3 ||
+        Math.abs(e.clientY - panState.startClientY) > 3) {
+      panState.moved = true;
+    }
     viewBox = {
       ...panState.startBox,
       minX: panState.startBox.minX - dx,
@@ -927,10 +968,21 @@ function setupZoomAndPan() {
     applyViewBox();
   });
   window.addEventListener('mouseup', () => {
-    if (panState) {
-      panState = null;
-      svg.classList.remove('panning');
-    }
+    // A press and release on bare background that never moved is a click on
+    // nothing, which is the ordinary way of saying "deselect". Without this
+    // the only way out of a selection was the small x in the side panel, so
+    // a clicked node looked like it was glowing for good.
+    if (endPan() === false && selectedSkillId !== null) closeSidePanel();
+  });
+  window.addEventListener('blur', () => endPan());
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    // Not while someone is typing the title or the description.
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (linkMode) return void setLinkMode(false);
+    if (selectedSkillId !== null) closeSidePanel();
   });
 
   svg.addEventListener('mousemove', (e) => {

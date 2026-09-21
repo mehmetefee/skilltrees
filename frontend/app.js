@@ -939,6 +939,12 @@ function renderFeatured() {
 
   svg.appendChild(edgesLayer);
   svg.appendChild(nodesLayer);
+
+  // The hero has no selection, so any highlight up at this point came from a
+  // hover — and the element that hover was on has just been replaced, so its
+  // mouseleave is never coming. Without this, .graph-has-highlight survives a
+  // drag on the <svg> with nothing lit and the whole hero sits dimmed.
+  highlightGraphPath(null, featuredTree, svg);
 }
 
 // Dragging a node repositions it on screen only — same as tree.js, nothing
@@ -958,8 +964,24 @@ function attachFeaturedNodeDrag(g, skill, pos) {
     startPos = { x: pos.x, y: pos.y };
     g.querySelector('.node-card')?.classList.add('is-dragging');
 
+    // See tree.js: renderFeatured() reapplies .is-dragging from
+    // featuredDraggingSkillId every frame, so a release nobody heard would
+    // leave the node glowing for good. Only a mouseup we actually saw may
+    // count as the click that opens the tree.
+    const endDrag = (released) => {
+      if (!dragging) return;
+      dragging = false;
+      featuredDraggingSkillId = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('blur', onLost);
+      renderFeatured();
+      if (released && !moved) window.location.href = `/tree.html?id=${featuredTree.id}`;
+    };
+
     const onMove = (ev) => {
       if (!dragging) return;
+      if (ev.buttons === 0) return void endDrag(false); // release we never saw
       const p = toFeaturedSvgPoint(ev);
       const dx = p.x - startPt.x;
       const dy = p.y - startPt.y;
@@ -968,16 +990,12 @@ function attachFeaturedNodeDrag(g, skill, pos) {
       pos.y = startPos.y + dy;
       renderFeatured();
     };
-    const onUp = () => {
-      dragging = false;
-      featuredDraggingSkillId = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      renderFeatured();
-      if (!moved) window.location.href = `/tree.html?id=${featuredTree.id}`;
-    };
+    const onUp = () => endDrag(true);
+    const onLost = () => endDrag(false);
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('blur', onLost);
   });
 }
 
@@ -1036,8 +1054,14 @@ function setupFeaturedHero() {
     };
     svg.classList.add('panning');
   });
+  const endPan = () => {
+    if (!panState) return;
+    panState = null;
+    svg.classList.remove('panning');
+  };
   window.addEventListener('mousemove', (e) => {
     if (!panState) return;
+    if (e.buttons === 0) return void endPan(); // release we never saw
     const dx = (e.clientX - panState.startClientX) * panState.scaleX;
     const dy = (e.clientY - panState.startClientY) * panState.scaleY;
     featuredViewBox = {
@@ -1047,12 +1071,8 @@ function setupFeaturedHero() {
     };
     applyFeaturedViewBox();
   });
-  window.addEventListener('mouseup', () => {
-    if (panState) {
-      panState = null;
-      svg.classList.remove('panning');
-    }
-  });
+  window.addEventListener('mouseup', endPan);
+  window.addEventListener('blur', endPan);
 
   document.getElementById('featured-zoom-in').addEventListener('click', () => zoomFeaturedAtCenter(0.8));
   document.getElementById('featured-zoom-out').addEventListener('click', () => zoomFeaturedAtCenter(1.25));
