@@ -3,7 +3,7 @@
   "version": 1,
   "title": "Physics from Axioms",
   "description": "Begin with a dozen assumptions no experiment can prove, and derive the rest. Newton’s laws, Maxwell’s equations and Newtonian gravity all turn up partway down rather than at the top. Three steps are retirements: an obvious truth that experiment refused.",
-  "author": "Claude",
+  "author": "Claude and Gemini",
   "layout": "auto",
   "skills": [
     {
@@ -39,7 +39,7 @@
     {
       "id": "universal-free-fall",
       "name": "Observe that everything falls alike",
-      "description": "A feather and a hammer dropped in vacuum land together; inertial and gravitational mass agree to about a part in 10^15. A brute experimental fact, with no explanation anywhere in Newtonian gravity.\n\nDerivation: none — and that is the scandal Newtonian gravity leaves behind. The $m$ in $F=ma$ and the $m$ in $F=GMm/r^2$ are measured in unrelated ways, and $m_i/m_g=1$ to about a part in $10^{15}$, for no reason the theory supplies."
+      "description": "A feather and a hammer dropped in vacuum land together; inertial and gravitational mass agree to about a part in $10^{15}$. A brute experimental fact, with no explanation anywhere in Newtonian gravity.\n\nDerivation: none — and that is the scandal Newtonian gravity leaves behind. The $m$ in $F=ma$ and the $m$ in $F=GMm/r^2$ are measured in unrelated ways, and $m_i/m_g=1$ to about a part in $10^{15}$, for no reason the theory supplies."
     },
     {
       "id": "thermal-equilibrium",
@@ -365,6 +365,41 @@
       ]
     },
     {
+      "id": "continuity-equation",
+      "name": "Derive the continuity equation",
+      "description": "Conservation of mass across an arbitrary control volume requires that local accumulation balance boundary flux. The prototype of every local conservation law in continuum physics.\n\nDerivation: apply mass conservation to a fixed volume $V$ with density $\\rho(\\mathbf x,t)$ and velocity $\\mathbf v(\\mathbf x,t)$: $$\\frac{d}{dt}\\int_V \\rho\\,dV = -\\oint_{\\partial V}\\rho\\mathbf v\\cdot d\\mathbf S$$ By Gauss's divergence theorem the surface integral becomes a volume integral. Because $V$ is arbitrary, the integrand vanishes pointwise: $$\\frac{\\partial\\rho}{\\partial t}+\\nabla\\cdot(\\rho\\mathbf v)=0$$",
+      "requires": [
+        "vector-calculus",
+        "mass-and-momentum"
+      ]
+    },
+    {
+      "id": "cauchy-stress-tensor",
+      "name": "Formulate the Cauchy stress tensor",
+      "description": "Forces inside a continuous body act across internal surfaces, described by a symmetric second-rank tensor whose divergence gives the net force density. This is where pressure and shear stress enter physics.\n\nDerivation: balance of linear momentum on a tetrahedron requires the surface traction to be linear in the unit normal, $\\mathbf t = \\boldsymbol\\sigma\\cdot\\mathbf n$. Applying the divergence theorem converts surface traction to volume force: $$\\rho\\frac{D\\mathbf v}{Dt} = \\nabla\\cdot\\boldsymbol\\sigma + \\rho\\mathbf g$$ Conservation of angular momentum forces $\\boldsymbol\\sigma=\\boldsymbol\\sigma^T$. Decomposing into isotropic and deviatoric parts defines pressure: $\\boldsymbol\\sigma=-p\\mathbb{I}+\\boldsymbol\\tau$.",
+      "requires": [
+        "continuity-equation",
+        "conservation-of-momentum"
+      ]
+    },
+    {
+      "id": "navier-stokes",
+      "name": "Derive the Navier-Stokes equations",
+      "description": "Equate viscous stress linearly to the rate of strain for an isotropic fluid, and Newton’s second law yields the fundamental equation of fluid motion. Integrable almost nowhere, and governing almost everything that flows.\n\nDerivation: assume the deviatoric stress $\\boldsymbol\\tau$ depends linearly and isotropically on the rate-of-strain tensor $D_{ij}=\\tfrac12(\\partial_i v_j+\\partial_j v_i)$, giving $\\boldsymbol\\tau=2\\mu\\mathbf D+\\lambda(\\nabla\\cdot\\mathbf v)\\mathbb{I}$. Substituting into Cauchy's momentum equation for constant viscosity $\\mu$: $$\\rho\\left(\\frac{\\partial\\mathbf v}{\\partial t}+\\mathbf v\\cdot\\nabla\\mathbf v\\right)=-\\nabla p+\\mu\\nabla^2\\mathbf v+\\rho\\mathbf g$$ Setting $\\mu=0$ recovers Euler's equation for ideal fluids.",
+      "requires": [
+        "cauchy-stress-tensor"
+      ]
+    },
+    {
+      "id": "acoustic-wave-equation",
+      "name": "Derive the acoustic wave equation",
+      "description": "Small pressure and density perturbations in a compressible fluid propagate as mechanical longitudinal waves. The historical and conceptual prototype of all wave equations in nature.\n\nDerivation: perturb a quiescent fluid with $\\rho=\\rho_0+\\rho'$, $p=p_0+p'$, and $\\mathbf v=\\mathbf v'$. Linearising continuity gives $\\partial_t \\rho'+\\rho_0\\nabla\\cdot\\mathbf v'=0$; linearising Euler gives $\\rho_0\\partial_t \\mathbf v'=-\\nabla p'$. Rapid cycles are adiabatic, so $p'=c_s^2\\rho'$ with $c_s=\\sqrt{(\\partial p/\\partial\\rho)_s}$. Combining them: $$\\nabla^2 p' - \\frac{1}{c_s^2}\\frac{\\partial^2 p'}{\\partial t^2}=0$$",
+      "requires": [
+        "navier-stokes",
+        "differential-equations"
+      ]
+    },
+    {
       "id": "hamiltonian-mechanics",
       "name": "Pass to the Hamiltonian",
       "description": "Legendre-transform velocity into momentum and second-order equations become a first-order flow on phase space. Nothing new is said; what changes is which structures you can see.\n\nDerivation: Legendre-transform the Lagrangian in the velocity, $H=p\\dot q-L$, with $\\dot q$ eliminated using $p=\\partial L/\\partial\\dot q$. Differentiating gives $$\\dot q=\\frac{\\partial H}{\\partial p},\\qquad \\dot p=-\\frac{\\partial H}{\\partial q}$$ one second-order equation traded for two first-order ones on phase space.",
@@ -410,7 +445,8 @@
       "description": "The only Lorentz-invariant action available for a worldline is proportional to the proper time along it. A free particle takes the path of greatest ageing, and no new axiom was needed to say so.\n\nDerivation: the action has to be a number every frame agrees on, and the only invariant a free worldline carries is its own proper time. So $$S=-mc^2\\!\\int d\\tau=-mc^2\\!\\int\\sqrt{1-v^2/c^2}\\;dt$$ with the sign and coefficient fixed by requiring the low-speed limit to reproduce $\\tfrac12 mv^2$.",
       "requires": [
         "stationary-action",
-        "spacetime-interval"
+        "spacetime-interval",
+        "relativistic-kinematics"
       ]
     },
     {
@@ -436,7 +472,8 @@
       "description": "A finite invariant speed forbids instantaneous forces, and once the force is delayed, momentum goes missing in the gap between the bodies. Give the gap its own momentum and the books balance again: the field is what conservation demands, not a convenience for drawing diagrams.\n\nDerivation: the light cone forbids influence faster than $c$, so when $A$ moves, the change in the force on $B$ arrives late. During the delay $\\mathbf p_1+\\mathbf p_2$ is not conserved. Restore it by giving the intervening region momentum of its own — which is to say, by inventing a field.",
       "requires": [
         "minkowski-geometry",
-        "newtons-third-law"
+        "newtons-third-law",
+        "retire-absolute-simultaneity"
       ]
     },
     {
@@ -521,7 +558,8 @@
       "name": "Explain interference, diffraction and refraction",
       "description": "Waves superpose, bend at boundaries, and cancel outright in the dark fringes. Fermat’s principle of least time turns out to be the action principle arriving from the other direction.\n\nDerivation: superpose solutions to get interference and diffraction; impose continuity of the fields across a boundary to get $n_1\\sin\\theta_1=n_2\\sin\\theta_2$. In the short-wavelength limit stationary phase selects the path of least time, $\\delta\\!\\int n\\,ds=0$ — the action principle again, arriving from the other side.",
       "requires": [
-        "electromagnetic-waves"
+        "electromagnetic-waves",
+        "identify-c-with-light"
       ]
     },
     {
@@ -529,7 +567,8 @@
       "name": "Build the stress-energy tensor",
       "description": "Noether for spacetime translations, applied to a field, gives a tensor whose entries are energy density, momentum density, pressure and stress. This is the object gravity will turn out to couple to, which is why gravity couples to absolutely everything.\n\nDerivation: Noether for the four spacetime translations, applied to a Lagrangian density rather than a Lagrangian, gives four conserved currents that assemble into $$T^{\\mu\\nu}=\\frac{\\partial\\mathcal{L}}{\\partial(\\partial_{\\mu}\\phi)}\\partial^{\\nu}\\phi-\\eta^{\\mu\\nu}\\mathcal{L},\\qquad \\partial_{\\mu}T^{\\mu\\nu}=0$$ whose components are the densities and fluxes of energy and momentum.",
       "requires": [
-        "lagrangian-field-theory"
+        "lagrangian-field-theory",
+        "cauchy-stress-tensor"
       ]
     },
     {
@@ -588,7 +627,7 @@
     {
       "id": "newtonian-gravity",
       "name": "Recover Newtonian gravity",
-      "description": "Weak field, slow motion, static source: the field equations collapse into Poisson’s equation and the inverse-square law, with one component of the metric playing the part of the potential. Three centuries of correct predictions, arriving as a limiting case.\n\nDerivation: take a weak static field, write $g_{00}=-(1+2\\phi/c^2)$, and keep first order in $\\phi$ at $v\\ll c$. The field equations collapse to $\\nabla^2\\phi=4\\pi G\\rho$ and the geodesic equation to $\\ddot{\\mathbf r}=-\\nabla\\phi$ — three centuries of correct predictions, arriving as a limiting case.",
+      "description": "Weak field, slow motion, static source: the field equations collapse into Poisson’s equation and the inverse-square law, with one component of the metric playing the part of the potential. Three centuries of correct predictions, arriving as a limiting case.\n\nDerivation: take a weak static field, write $g_{00}=1+2\\phi/c^2$, and keep first order in $\\phi$ at $v\\ll c$. The field equations collapse to $\\nabla^2\\phi=4\\pi G\\rho$ and the geodesic equation to $\\ddot{\\mathbf r}=-\\nabla\\phi$ — three centuries of correct predictions, arriving as a limiting case.",
       "requires": [
         "einstein-field-equations",
         "potentials-and-forces"
@@ -597,7 +636,7 @@
     {
       "id": "black-holes",
       "name": "Solve for a black hole",
-      "description": "The Schwarzschild metric, a horizon that is a one-way surface rather than a place, and a singularity that is better read as the theory failing than as a point in space.\n\nDerivation: solve the vacuum equations for a static, spherically symmetric metric. Birkhoff says the answer is unique: $$ds^2=-\\left(1-\\frac{r_s}{r}\\right)c^2dt^2+\\frac{dr^2}{1-r_s/r}+r^2d\\Omega^2$$ At $r_s=2GM/c^2$ the $t$ and $r$ coefficients change sign together, so moving inward becomes as unavoidable as moving forward in time.",
+      "description": "The Schwarzschild metric, a horizon that is a one-way surface rather than a place, and a singularity that is better read as the theory failing than as a point in space.\n\nDerivation: solve the vacuum equations for a static, spherically symmetric metric. Birkhoff says the answer is unique: $$ds^2=\\left(1-\\frac{r_s}{r}\\right)c^2dt^2-\\frac{dr^2}{1-r_s/r}-r^2d\\Omega^2$$ At $r_s=2GM/c^2$ the $t$ and $r$ coefficients change sign together, so moving inward becomes as unavoidable as moving forward in time.",
       "requires": [
         "einstein-field-equations"
       ]
@@ -664,7 +703,7 @@
     {
       "id": "thermodynamic-potentials",
       "name": "Choose the right potential",
-      "description": "Legendre transforms again, the same manoeuvre that produced the Hamiltonian: trade a variable for its conjugate to suit whatever you are holding fixed. Free energy, enthalpy, Gibbs, and the Maxwell relations that follow from mixed partial derivatives commuting.\n\nDerivation: the same Legendre transform that turned the Lagrangian into the Hamiltonian. $F=U-TS$, $H=U+pV$, $G=U-TS+pV$. Equality of mixed second derivatives then hands over the Maxwell relations for nothing, such as $$\\left(\\frac{\\partial S}{\\partial V}\\right)_{T}=\\left(\\frac{\\partial p}{\\partial T}\\right)_{V}$$",
+      "description": "Legendre transforms again, the same manoeuvre that produced the Hamiltonian: trade a variable for its conjugate to suit whatever you are holding fixed. Free energy, enthalpy, Gibbs, chemical potential, and the Maxwell relations that follow from mixed partial derivatives commuting.\n\nDerivation: the same Legendre transform that turned the Lagrangian into the Hamiltonian. $F=U-TS$, $H=U+pV$, $G=U-TS+pV$, and the grand potential $\\Phi=F-\\mu N=-pV$ where the chemical potential is $\\mu=(\\partial U/\\partial N)_{S,V}$. Equality of mixed second derivatives then hands over the Maxwell relations for nothing, such as $$\\left(\\frac{\\partial S}{\\partial V}\\right)_{T}=\\left(\\frac{\\partial p}{\\partial T}\\right)_{V}$$",
       "requires": [
         "absolute-temperature",
         "hamiltonian-mechanics"
@@ -771,7 +810,8 @@
       "requires": [
         "radiation",
         "equipartition-and-gases",
-        "optics"
+        "optics",
+        "acoustic-wave-equation"
       ]
     },
     {
@@ -881,7 +921,8 @@
       "description": "Give every history an amplitude whose phase is its action divided by hbar, and add them all up. Away from the stationary path the phases cancel, which is why the principle this tree assumed near the top is true. The action principle is derived here, one storey below where it was borrowed.\n\nDerivation: slice the evolution into short steps and insert a complete set of states between each pair. Each short amplitude is an exponential of the Lagrangian times the step, so the whole is $$\\langle x_f|e^{-i\\hat HT/\\hbar}|x_i\\rangle=\\int\\mathcal{D}x\\;e^{iS[x]/\\hbar}$$ Away from stationary $S$ neighbouring phases cancel — which is why the principle assumed at the top of the tree is true.",
       "requires": [
         "born-rule",
-        "stationary-action"
+        "stationary-action",
+        "superposition-and-interference"
       ]
     },
     {
@@ -901,7 +942,8 @@
       "requires": [
         "schrodinger-equation",
         "central-force-motion",
-        "spin"
+        "spin",
+        "electrostatics-and-magnetostatics"
       ]
     },
     {
@@ -1035,16 +1077,18 @@
       "description": "Three gauge symmetries, three generations, a mechanism for giving mass without spoiling gauge invariance, and about twenty numbers nobody can derive from anything. It accounts for every laboratory measurement ever made, which is simultaneously its triumph and the reason it is so frustrating.\n\nDerivation: choose the gauge group $SU(3)\\times SU(2)\\times U(1)$, assign the matter fields — fermionic, by spin–statistics — to representations of it, and write down every renormalisable term the symmetry permits. Giving the weak bosons mass without spoiling gauge invariance forces a scalar whose vacuum breaks the symmetry. What is left is about twenty measured numbers.",
       "requires": [
         "renormalisation-and-eft",
-        "spin-statistics"
+        "spin-statistics",
+        "antimatter-and-cpt"
       ]
     },
     {
       "id": "quantum-gravity",
       "name": "See why gravity and quantum theory will not combine",
-      "description": "Treat the metric as one more quantum field and the theory is non-renormalisable: every order of correction needs a new constant, and predictive power runs out. Both parent theories are confirmed to absurd precision, and they cannot both be right as written.\n\nDerivation: write $g_{\\mu\\nu}=\\eta_{\\mu\\nu}+h_{\\mu\\nu}$ and quantise $h$ like any other field. The coupling is $\\sqrt{G}$, of dimension $1/\\text{mass}$, so each order of perturbation demands a new counterterm and no finite set of parameters suffices. Below $M_P=\\sqrt{\\hbar c/G}\\approx10^{19}$ GeV it works as an effective theory; as a fundamental one it says nothing.",
+      "description": "Treat the metric as one more quantum field and the theory is non-renormalisable: every order of correction needs a new constant, and predictive power runs out. Both parent theories are confirmed to absurd precision, and they cannot both be right as written.\n\nDerivation: write $g_{\\mu\\nu}=\\eta_{\\mu\\nu}+h_{\\mu\\nu}$ and quantise $h$ like any other field. The coupling is $\\sqrt{G}$, of dimension $1/\\text{mass}$, so each order of perturbation demands a new counterterm and no finite set of parameters suffices. Below $M_P=\\sqrt{\\hbar c/G}\\approx 10^{19}\\text{ GeV}$ it works as an effective theory; as a fundamental one it says nothing.",
       "requires": [
         "einstein-field-equations",
-        "renormalisation-and-eft"
+        "renormalisation-and-eft",
+        "black-holes"
       ]
     },
     {
