@@ -1571,6 +1571,20 @@ code {
   transform: rotate(90deg) scale(1.15);
 }
 
+/* A skill description is built as paragraphs rather than assigned as one
+   string, so the blank line before a derivation is a real break and the TeX
+   between $…$ can be rendered. See renderDescription() in app.js. */
+#panel-desc .desc-para { margin: 0 0 var(--space-3); }
+#panel-desc .desc-para:last-child { margin-bottom: 0; }
+/* A display equation is wider than this panel more often than not, and a
+   formula that runs under the edge is worse than one you have to nudge. */
+#panel-desc .katex-display {
+  margin: var(--space-3) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+}
+
 .panel-section {
   margin-top: var(--space-5);
   opacity: 0;

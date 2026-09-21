@@ -234,6 +234,30 @@ limits and the layout's own work budget existed. A tree anywhere near either
 limit is long past the point of being readable by a person, so the numbers
 cost nothing real and stop a file aimed at the machine drawing it.
 
+## Maths in descriptions
+
+A `description` may carry TeX, between `$…$` inline or `$$…$$` for a formula
+on its own line:
+
+```json
+"description": "Vary the action and the stationary path obeys $$\\frac{d}{dt}\\frac{\\partial L}{\\partial\\dot q}=\\frac{\\partial L}{\\partial q}$$"
+```
+
+This is a convention about the text, not a change to the format: a
+description is still a plain string, the validator neither checks nor
+requires it, and a reader that does not render maths shows the source with
+its dollar signs, which stays legible. That is why it is stated here rather
+than added as a field.
+
+The site renders it with KaTeX, vendored under `frontend/vendor/katex/`.
+Everything outside the delimiters is inserted as text and never parsed, and
+KaTeX runs with `trust: false`, so no description can put a link or raw
+markup into the page however the file was written. A blank line in a
+description starts a new paragraph.
+
+Writing a literal `$` that is not maths is the one thing to watch: a pair of
+them on the same line will be read as an expression.
+
 ## Extensions
 
 Readers must ignore unrecognized fields rather than failing, so a tree written

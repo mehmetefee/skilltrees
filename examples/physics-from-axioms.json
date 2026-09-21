@@ -24,22 +24,22 @@
     {
       "id": "isotropy-of-space",
       "name": "Assume space has no special direction",
-      "description": "Turning an apparatus around does not change what it does. Angular momentum is what this one costs.\n\nDerivation: none. Tested directly by Hughes-Drever experiments, which look for a nuclear energy level that depends on which way the apparatus is pointing, and find none to extraordinary precision."
+      "description": "Turning an apparatus around does not change what it does. Angular momentum is what this one costs.\n\nDerivation: none. Tested directly by Hughes–Drever experiments, which look for a nuclear energy level that depends on which way the apparatus is pointing, and find none to extraordinary precision."
     },
     {
       "id": "principle-of-relativity",
       "name": "Assume uniform motion is undetectable",
-      "description": "Sealed in a steadily moving cabin, no experiment tells you that you are moving. Galileo stated it about a ship below decks; it is the one axiom that survives into relativity completely unchanged.\n\nDerivation: none. Galileo’s ship is the whole argument: below decks with no window, no experiment distinguishes rest from steady motion. Every theory below is built to preserve it rather than to test it."
+      "description": "Sealed in a steadily moving cabin, no experiment tells you that you are moving. Galileo stated it about a ship below decks; it is the one axiom that survives into relativity completely unchanged.\n\nDerivation: none. Galileo's ship is the whole argument: below decks with no window, no experiment distinguishes rest from steady motion. Every theory below is built to preserve it rather than to test it."
     },
     {
       "id": "causal-order",
       "name": "Assume causes come before effects",
-      "description": "Of two events where one could have influenced the other, every observer agrees which came first. This is what fixes the sign of the spacetime interval and forbids signals that outrun it.\n\nDerivation: none, and it is imposed rather than found. The minus sign that makes the spacetime interval Lorentzian instead of Euclidean is chosen so that this holds; nothing else forces it."
+      "description": "Of two events where one could have influenced the other, every observer agrees which came first. This is what fixes the sign of the spacetime interval and forbids signals that outrun it.\n\nDerivation: none, and it is imposed rather than found. The minus sign that makes the interval $c^2dt^2-dx^2$ Lorentzian instead of Euclidean is chosen so that this holds; nothing else forces it."
     },
     {
       "id": "universal-free-fall",
       "name": "Observe that everything falls alike",
-      "description": "A feather and a hammer dropped in vacuum land together; inertial and gravitational mass agree to about a part in 10^15. A brute experimental fact, with no explanation anywhere in Newtonian gravity.\n\nDerivation: none — and that is the scandal Newtonian gravity leaves behind. The m in F = ma and the m in the gravitational force are measured in unrelated ways and agree exactly, for no reason the theory supplies."
+      "description": "A feather and a hammer dropped in vacuum land together; inertial and gravitational mass agree to about a part in 10^15. A brute experimental fact, with no explanation anywhere in Newtonian gravity.\n\nDerivation: none — and that is the scandal Newtonian gravity leaves behind. The $m$ in $F=ma$ and the $m$ in $F=GMm/r^2$ are measured in unrelated ways, and $m_i/m_g=1$ to about a part in $10^{15}$, for no reason the theory supplies."
     },
     {
       "id": "thermal-equilibrium",
@@ -49,7 +49,7 @@
     {
       "id": "matter-is-made-of-parts",
       "name": "Assume matter is made of countably many parts",
-      "description": "Feynman’s candidate for the single sentence worth saving if all other scientific knowledge were lost. Nothing above this needs it; everything statistical is impossible without it.\n\nDerivation: none while it is assumed. It stops being an assumption at \"Estimate fluctuations\", where the visible jitter of a suspended grain counts the parts and returns a number."
+      "description": "Feynman’s candidate for the single sentence worth saving if all other scientific knowledge were lost. Nothing above this needs it; everything statistical is impossible without it.\n\nDerivation: none while it is assumed. It stops being an assumption at \"Estimate fluctuations\", where the visible jitter of a suspended grain counts the parts and returns a number for $N$."
     },
     {
       "id": "calculus",
@@ -77,7 +77,7 @@
     {
       "id": "vector-calculus",
       "name": "Take gradients, divergences and curls",
-      "description": "Fields differentiated in three dimensions, and the integral theorems of Gauss and Stokes that trade a statement about a volume for one about its surface.\n\nDerivation: apply the derivative of calculus componentwise to the vector fields of linear algebra. Grad, div and curl are the three ways one derivative can act on them, and the integral theorems follow from interior faces cancelling in a subdivided region.",
+      "description": "Fields differentiated in three dimensions, and the integral theorems of Gauss and Stokes that trade a statement about a volume for one about its surface.\n\nDerivation: apply the derivative of calculus componentwise to the vector fields of linear algebra, giving $\\nabla\\phi$, $\\nabla\\cdot\\mathbf F$ and $\\nabla\\times\\mathbf F$. The integral theorems follow from interior faces cancelling in a subdivided region: $$\\int_V \\nabla\\cdot\\mathbf F\\,dV=\\oint_{\\partial V}\\mathbf F\\cdot d\\mathbf S$$",
       "requires": [
         "calculus",
         "linear-algebra"
@@ -94,7 +94,7 @@
     {
       "id": "variational-calculus",
       "name": "Extremise a functional",
-      "description": "Find the path that makes an integral stationary, rather than the point that makes a function stationary. Euler and Lagrange’s machinery, and the reason the action principle can be stated at all.\n\nDerivation: replace the function of calculus with a functional — a number assigned to a whole path. Stationarity under any small variation vanishing at the ends, plus the fundamental lemma, converts that condition into a differential equation.",
+      "description": "Find the path that makes an integral stationary, rather than the point that makes a function stationary. Euler and Lagrange’s machinery, and the reason the action principle can be stated at all.\n\nDerivation: replace the function of calculus with a functional $S[q]=\\int L\\,dt$ — a number assigned to a whole path. Stationarity under any small variation vanishing at the ends, plus the fundamental lemma, converts $\\delta S=0$ into a differential equation.",
       "requires": [
         "calculus"
       ]
@@ -102,7 +102,7 @@
     {
       "id": "symmetry-groups",
       "name": "Handle a group of symmetries",
-      "description": "Groups, their continuous Lie versions, and the algebra of infinitesimal generators. A symmetry of a physical law is an element of one of these, which is the whole reason the abstraction pays.\n\nDerivation: transformations that compose and invert form a group; require them to depend smoothly on parameters, differentiate at the identity, and the local structure collapses into a Lie algebra of generators — a vector space, which is what makes it tractable.",
+      "description": "Groups, their continuous Lie versions, and the algebra of infinitesimal generators. A symmetry of a physical law is an element of one of these, which is the whole reason the abstraction pays.\n\nDerivation: transformations that compose and invert form a group; require them to depend smoothly on parameters, differentiate at the identity, and the local structure collapses into a Lie algebra of generators $[T_a,T_b]=if_{abc}T_c$ — a vector space, which is what makes it tractable.",
       "requires": [
         "linear-algebra",
         "calculus"
@@ -111,7 +111,7 @@
     {
       "id": "representation-theory",
       "name": "Represent a group on a vector space",
-      "description": "How a symmetry acts on states rather than on space itself. Irreducible representations are the atoms of this subject, and much later they turn out to be the atoms of matter as well.\n\nDerivation: ask the group to act on a vector space by linear maps. Decomposing that action into pieces with no invariant subspace gives the irreducibles, and every representation is assembled from them.",
+      "description": "How a symmetry acts on states rather than on space itself. Irreducible representations are the atoms of this subject, and much later they turn out to be the atoms of matter as well.\n\nDerivation: ask the group to act on a vector space by linear maps, $D(g_1)D(g_2)=D(g_1g_2)$. Decomposing that action into pieces with no invariant subspace gives the irreducibles, and every representation is assembled from them.",
       "requires": [
         "symmetry-groups"
       ]
@@ -119,7 +119,7 @@
     {
       "id": "tensor-calculus",
       "name": "Write equations in tensors",
-      "description": "Indices, the summation convention, and the discipline of writing only equations that survive a change of coordinates. Covariance stops being a slogan and becomes something closer to a type check.\n\nDerivation: notice that the objects of vector calculus are defined entirely by how their components change under a change of coordinates, then keep only that property. An equation between tensors true in one chart is true in every chart.",
+      "description": "Indices, the summation convention, and the discipline of writing only equations that survive a change of coordinates. Covariance stops being a slogan and becomes something closer to a type check.\n\nDerivation: notice that the objects of vector calculus are defined entirely by how their components transform, $T'^{\\mu}{}_{\\nu}=\\frac{\\partial x'^{\\mu}}{\\partial x^{\\alpha}}\\frac{\\partial x^{\\beta}}{\\partial x'^{\\nu}}T^{\\alpha}{}_{\\beta}$, then keep only that. An equation between tensors true in one chart is true in every chart.",
       "requires": [
         "vector-calculus"
       ]
@@ -127,7 +127,7 @@
     {
       "id": "differential-geometry",
       "name": "Do calculus on a curved manifold",
-      "description": "Metric, connection, parallel transport, curvature. The apparatus for a space that has no flat chart, built so that every statement is about the space and not about the map you drew of it.\n\nDerivation: glue coordinate charts so the tensors defined in each agree on the overlaps. A metric supplies length; a connection says how to compare vectors at different points, by solving a differential equation along the curve joining them; and the failure of two such transports to commute is curvature.",
+      "description": "Metric, connection, parallel transport, curvature. The apparatus for a space that has no flat chart, built so that every statement is about the space and not about the map you drew of it.\n\nDerivation: glue coordinate charts so the tensors defined in each agree on the overlaps. A metric $g_{\\mu\\nu}$ supplies length; a connection says how to compare vectors at different points, by solving $\\frac{Dv^{\\mu}}{d\\lambda}=0$ along the curve joining them; and the failure of two such transports to commute is curvature.",
       "requires": [
         "tensor-calculus",
         "differential-equations"
@@ -136,7 +136,7 @@
     {
       "id": "hilbert-space",
       "name": "Work in an infinite-dimensional inner-product space",
-      "description": "Completeness, orthonormal bases, self-adjoint operators and their spectra. A vector space roomy enough to hold a function as one of its points, which is what a quantum state will turn out to be.\n\nDerivation: take the inner-product space of linear algebra, let the dimension be infinite, and use calculus to demand completeness so that limits of vectors stay inside. Square-integrable functions are the example that matters.",
+      "description": "Completeness, orthonormal bases, self-adjoint operators and their spectra. A vector space roomy enough to hold a function as one of its points, which is what a quantum state will turn out to be.\n\nDerivation: take the inner-product space of linear algebra, let the dimension be infinite, and use calculus to demand completeness so that limits of vectors stay inside. The example that matters is $L^2$, the functions with $\\int|\\psi|^2<\\infty$.",
       "requires": [
         "linear-algebra",
         "calculus"
@@ -145,7 +145,7 @@
     {
       "id": "fourier-analysis",
       "name": "Decompose into frequencies",
-      "description": "Any decent signal is a sum of sines, and a differential equation in time becomes an algebraic one in frequency. The same transform later relates position to momentum.\n\nDerivation: the complex exponentials are eigenfunctions of d/dx, and they are orthogonal in the inner product linear algebra supplies. Expanding in that basis therefore turns differentiation into multiplication.",
+      "description": "Any decent signal is a sum of sines, and a differential equation in time becomes an algebraic one in frequency. The same transform later relates position to momentum.\n\nDerivation: the complex exponentials are eigenfunctions of $d/dx$, since $\\frac{d}{dx}e^{ikx}=ike^{ikx}$, and they are orthogonal in the inner product linear algebra supplies. Expanding in that basis therefore turns differentiation into multiplication.",
       "requires": [
         "calculus",
         "linear-algebra"
@@ -163,7 +163,7 @@
     {
       "id": "frame-change-group",
       "name": "Derive the group of frame changes",
-      "description": "Homogeneity, isotropy, reciprocity, and closure under composition leave exactly a one-parameter family of transformations between inertial frames. Ignatowski, 1910: the structure of spacetime is settled before light has been mentioned once.\n\nDerivation: homogeneity forces the map between two inertial frames to be linear, isotropy reduces it to a boost along the relative velocity, reciprocity fixes the one remaining asymmetry, and demanding that two boosts compose into a boost — the group axiom — leaves exactly one undetermined constant.",
+      "description": "Homogeneity, isotropy, reciprocity, and closure under composition leave exactly a one-parameter family of transformations between inertial frames. Ignatowski, 1910: the structure of spacetime is settled before light has been mentioned once.\n\nDerivation: homogeneity forces the map between two inertial frames to be linear, isotropy reduces it to a boost along the relative velocity, reciprocity fixes the one remaining asymmetry, and demanding that two boosts compose into a boost — the group axiom — leaves exactly one undetermined constant $\\kappa$: $$x'=\\gamma(x-vt),\\qquad t'=\\gamma(t-\\kappa vx),\\qquad \\gamma=\\frac{1}{\\sqrt{1-\\kappa v^2}}$$",
       "requires": [
         "inertial-frame",
         "symmetry-groups",
@@ -174,7 +174,7 @@
     {
       "id": "galilean-relativity",
       "name": "Take the branch with no invariant speed",
-      "description": "Set the parameter to zero: velocities add without limit, simultaneity is absolute, and the group is Galilei’s. All of classical mechanics is built on this branch, which makes it a limiting case rather than a law.\n\nDerivation: set that constant to zero. The boost degenerates to x′ = x - vt with t′ = t, so velocities add without bound and simultaneity is the same for everyone.",
+      "description": "Set the parameter to zero: velocities add without limit, simultaneity is absolute, and the group is Galilei’s. All of classical mechanics is built on this branch, which makes it a limiting case rather than a law.\n\nDerivation: set $\\kappa=0$. The boost degenerates to $x'=x-vt$ with $t'=t$, so velocities add without bound and simultaneity is the same for everyone.",
       "requires": [
         "frame-change-group"
       ]
@@ -182,7 +182,7 @@
     {
       "id": "invariant-speed",
       "name": "Measure the one free parameter",
-      "description": "The family has a single constant with the units of one over a speed squared. Causality rules out one sign, and experiment fixes the size; nothing in the derivation says which value nature picked. This step is irreducibly empirical.\n\nDerivation: a negative constant would make boosts into rotations, and a large enough rotation reverses the order of two events — which causal order forbids. So the constant is zero or positive, and if positive its inverse square root is a speed every frame agrees on. How big, only measurement can say.",
+      "description": "The family has a single constant with the units of one over a speed squared. Causality rules out one sign, and experiment fixes the size; nothing in the derivation says which value nature picked. This step is irreducibly empirical.\n\nDerivation: $\\kappa<0$ would make boosts into rotations, and a large enough rotation reverses the order of two events — which causal order forbids. So $\\kappa\\ge 0$, and if $\\kappa>0$ then $c=1/\\sqrt{\\kappa}$ is a speed every frame agrees on. How big, only measurement can say.",
       "requires": [
         "frame-change-group",
         "causal-order"
@@ -191,7 +191,7 @@
     {
       "id": "lorentz-transformation",
       "name": "Write down the Lorentz transformation",
-      "description": "With the parameter non-zero the frame changes are Lorentz’s, and there is a finite speed every observer measures the same. It is a property of spacetime, not of anything that happens to travel at it.\n\nDerivation: substitute the measured constant back into the one-parameter family. The boost acquires the factor 1/sqrt(1 - v^2/c^2), and t′ now mixes in x — which is where every subsequent surprise comes from.",
+      "description": "With the parameter non-zero the frame changes are Lorentz’s, and there is a finite speed every observer measures the same. It is a property of spacetime, not of anything that happens to travel at it.\n\nDerivation: substitute the measured $\\kappa=1/c^2$ back into the one-parameter family: $$x'=\\gamma(x-vt),\\qquad t'=\\gamma\\!\\left(t-\\frac{vx}{c^2}\\right),\\qquad \\gamma=\\frac{1}{\\sqrt{1-v^2/c^2}}$$ The $vx/c^2$ in $t'$ is where every subsequent surprise comes from.",
       "requires": [
         "invariant-speed"
       ]
@@ -199,7 +199,7 @@
     {
       "id": "retire-absolute-simultaneity",
       "name": "Retire absolute simultaneity",
-      "description": "What is happening \"now\" somewhere else is not a fact about the world but a choice of frame. The first of this tree’s obvious truths to be discarded — and nobody had thought it worth writing down as an assumption until it failed.\n\nDerivation: read the equation for t′. Two events sharing a t but differing in x have different t′, so \"at the same time\" is not a relation between two events but a relation among two events and a frame.",
+      "description": "What is happening \"now\" somewhere else is not a fact about the world but a choice of frame. The first of this tree’s obvious truths to be discarded — and nobody had thought it worth writing down as an assumption until it failed.\n\nDerivation: read the equation for $t'$. Two events sharing a $t$ but differing in $x$ have $\\Delta t'=-\\gamma v\\Delta x/c^2\\ne 0$, so \"at the same time\" is not a relation between two events but a relation among two events and a frame.",
       "requires": [
         "lorentz-transformation"
       ]
@@ -207,7 +207,7 @@
     {
       "id": "relativistic-kinematics",
       "name": "Compute dilation, contraction and velocity addition",
-      "description": "Moving clocks run slow, moving rods are short, and velocities compose so that the invariant speed is never passed. The twin paradox becomes arithmetic the moment proper time exists.\n\nDerivation: apply the transformation to a clock at rest in one frame (dilation), to the two ends of a rod whose positions are taken at one t (contraction), and to two successive boosts (velocity addition, which never passes c because boosts form a group).",
+      "description": "Moving clocks run slow, moving rods are short, and velocities compose so that the invariant speed is never passed. The twin paradox becomes arithmetic the moment proper time exists.\n\nDerivation: apply the transformation to a clock at rest in one frame, to the two ends of a rod measured at one $t$, and to two successive boosts: $$\\Delta t=\\gamma\\,\\Delta\\tau,\\qquad L=L_0/\\gamma,\\qquad w=\\frac{u+v}{1+uv/c^2}$$ The last never exceeds $c$, because boosts form a group.",
       "requires": [
         "lorentz-transformation"
       ]
@@ -215,7 +215,7 @@
     {
       "id": "spacetime-interval",
       "name": "Use the invariant interval",
-      "description": "The combination of distance and duration that every frame agrees on, with one minus sign in it. Proper time is what a carried clock reads, and geometry quietly replaces bookkeeping.\n\nDerivation: ask which quadratic form in dt and dx the transformation leaves unchanged. It is c^2dt^2 - dx^2, so write it as a metric of signature (+,-,-,-) and every Lorentz-invariant claim becomes a tensor equation.",
+      "description": "The combination of distance and duration that every frame agrees on, with one minus sign in it. Proper time is what a carried clock reads, and geometry quietly replaces bookkeeping.\n\nDerivation: ask which quadratic form the transformation leaves unchanged. It is $$ds^2=c^2dt^2-dx^2-dy^2-dz^2$$ so write it as $ds^2=\\eta_{\\mu\\nu}dx^{\\mu}dx^{\\nu}$ with signature $(+,-,-,-)$, and every Lorentz-invariant claim becomes a tensor equation.",
       "requires": [
         "lorentz-transformation",
         "tensor-calculus"
@@ -224,7 +224,7 @@
     {
       "id": "minkowski-geometry",
       "name": "Read a light cone",
-      "description": "Timelike, null and spacelike separation, and the causal structure they carve out. Which events can influence which has become a question about geometry.\n\nDerivation: classify separations by the sign of the interval — timelike and reachable below c, null, or spacelike and unreachable. The light cone is the zero set, and it sorts all other events into past, future and elsewhere.",
+      "description": "Timelike, null and spacelike separation, and the causal structure they carve out. Which events can influence which has become a question about geometry.\n\nDerivation: classify separations by the sign of $ds^2$ — timelike and reachable below $c$, null, or spacelike and unreachable. The light cone is the set $ds^2=0$, and it sorts all other events into past, future and elsewhere.",
       "requires": [
         "spacetime-interval"
       ]
@@ -232,7 +232,7 @@
     {
       "id": "stationary-action",
       "name": "State the principle of stationary action",
-      "description": "A system follows the history that makes a certain integral stationary. This tree takes it as the central axiom: everything a system does is packed into one function, and every symmetry of that function is a conservation law waiting to be read off.\n\nDerivation: none — this is a second root, sitting here rather than at the top only because it needs the two above to be stated at all. Variational calculus supplies the language and the inertial frame the arena; the physical claim, that nature makes something stationary, is assumed. It is explained at \"Sum over histories\", twenty columns along.",
+      "description": "A system follows the history that makes a certain integral stationary. This tree takes it as the central axiom: everything a system does is packed into one function, and every symmetry of that function is a conservation law waiting to be read off.\n\nDerivation: none — this is a second root, sitting here rather than at the top only because it needs the two above to be stated at all. Variational calculus supplies the language and the inertial frame the arena; the physical claim, that nature makes $S=\\int L\\,dt$ stationary, is assumed. It is explained at \"Sum over histories\", twenty columns along.",
       "requires": [
         "variational-calculus",
         "inertial-frame"
@@ -241,7 +241,7 @@
     {
       "id": "euler-lagrange",
       "name": "Derive the Euler-Lagrange equations",
-      "description": "Vary the action, integrate by parts, throw away the boundary term, and the stationary history satisfies a differential equation. Generalised coordinates and constraints come free, which is the practical reason anyone works this way.\n\nDerivation: vary the path, expand the action to first order, integrate the velocity term by parts and drop the boundary term because the endpoints are held fixed. What remains must vanish for every variation, so its coefficient vanishes, leaving one second-order differential equation per coordinate: d/dt(dL/dv) = dL/dq.",
+      "description": "Vary the action, integrate by parts, throw away the boundary term, and the stationary history satisfies a differential equation. Generalised coordinates and constraints come free, which is the practical reason anyone works this way.\n\nDerivation: vary the path, expand to first order, integrate the velocity term by parts and drop the boundary term because the endpoints are held fixed. What remains must vanish for every $\\delta q$, so its coefficient vanishes: $$\\frac{d}{dt}\\frac{\\partial L}{\\partial\\dot q}=\\frac{\\partial L}{\\partial q}$$",
       "requires": [
         "stationary-action",
         "differential-equations"
@@ -250,7 +250,7 @@
     {
       "id": "free-particle-lagrangian",
       "name": "Derive the free-particle Lagrangian",
-      "description": "Homogeneity forbids the Lagrangian to depend on where or when, isotropy forbids it to depend on direction, so it depends on speed alone; requiring a Galilean boost to change it by no more than a total derivative then forces it proportional to v squared. Kinetic energy is not assumed anywhere. Mass is the leftover constant.\n\nDerivation: homogeneity of space and time strips position and time out of L, isotropy strips out the direction of v, leaving L = L(v^2). Now boost infinitesimally: v^2 shifts by 2v·e, and L is allowed to change only by a total time derivative. That forces dL/d(v^2) to be a constant. Twice that constant is the mass.",
+      "description": "Homogeneity forbids the Lagrangian to depend on where or when, isotropy forbids it to depend on direction, so it depends on speed alone; requiring a Galilean boost to change it by no more than a total derivative then forces it proportional to v squared. Kinetic energy is not assumed anywhere. Mass is the leftover constant.\n\nDerivation: homogeneity of space and time strips $q$ and $t$ out of $L$, isotropy strips out the direction of $\\mathbf v$, leaving $L=L(v^2)$. Boost infinitesimally: $v^2$ shifts by $2\\mathbf v\\cdot\\boldsymbol\\epsilon$, and $L$ may change only by a total time derivative. That forces $\\partial L/\\partial(v^2)$ to be constant: $$L=\\tfrac{1}{2}mv^2$$ Twice that constant is the mass.",
       "requires": [
         "euler-lagrange",
         "galilean-relativity",
@@ -261,7 +261,7 @@
     {
       "id": "mass-and-momentum",
       "name": "Read off mass and momentum",
-      "description": "Momentum is the derivative of the Lagrangian with respect to velocity; mass is the proportionality constant the previous step left lying around. Both are defined by the action rather than measured into it.\n\nDerivation: p = dL/dv applied to L = mv^2/2 gives p = mv, with m the constant the previous step could not pin down. Mass enters physics as a coefficient in a Lagrangian rather than as a quantity of stuff.",
+      "description": "Momentum is the derivative of the Lagrangian with respect to velocity; mass is the proportionality constant the previous step left lying around. Both are defined by the action rather than measured into it.\n\nDerivation: $p=\\partial L/\\partial\\dot q$ applied to $L=\\tfrac12 mv^2$ gives $p=mv$, with $m$ the constant the previous step could not pin down. Mass enters physics as a coefficient in a Lagrangian rather than as a quantity of stuff.",
       "requires": [
         "free-particle-lagrangian"
       ]
@@ -269,7 +269,7 @@
     {
       "id": "noethers-theorem",
       "name": "Prove Noether’s theorem",
-      "description": "Every continuous symmetry of the action carries with it a quantity the equations of motion cannot change. The most load-bearing theorem in this tree: it is the machine that converts the assumptions at the roots into the conservation laws below.\n\nDerivation: let a one-parameter group act on the coordinates and leave the action unchanged. Expand to first order and substitute the Euler-Lagrange equations: the first-order change collapses into the total time derivative of one quantity, which must therefore be constant.",
+      "description": "Every continuous symmetry of the action carries with it a quantity the equations of motion cannot change. The most load-bearing theorem in this tree: it is the machine that converts the assumptions at the roots into the conservation laws below.\n\nDerivation: let a one-parameter group act on the coordinates and leave the action unchanged. Expand to first order and substitute the Euler–Lagrange equations: the change collapses into the total time derivative of one quantity, which is therefore constant. $$Q=\\frac{\\partial L}{\\partial\\dot q}\\,\\delta q-\\Lambda,\\qquad \\frac{dQ}{dt}=0$$",
       "requires": [
         "stationary-action",
         "symmetry-groups"
@@ -278,7 +278,7 @@
     {
       "id": "conservation-of-momentum",
       "name": "Derive conservation of momentum",
-      "description": "Noether applied to spatial translation. Momentum is conserved because space has no special place — a stranger and far stronger claim than the schoolbook version, which asserts it and moves on.\n\nDerivation: the symmetry is q -> q + a. Noether’s conserved quantity is the sum of dL/dv over the particles, which the previous step already identified as the total momentum.",
+      "description": "Noether applied to spatial translation. Momentum is conserved because space has no special place — a stranger and far stronger claim than the schoolbook version, which asserts it and moves on.\n\nDerivation: the symmetry is $q\\to q+a$, so $\\delta q=1$ and Noether's charge is $$\\mathbf P=\\sum_i\\frac{\\partial L}{\\partial\\dot{\\mathbf q}_i}=\\sum_i m_i\\mathbf v_i$$ which the previous step already identified as the total momentum.",
       "requires": [
         "noethers-theorem",
         "homogeneity-of-space",
@@ -288,7 +288,7 @@
     {
       "id": "conservation-of-energy",
       "name": "Derive conservation of energy",
-      "description": "Noether applied to time translation. Energy is conserved exactly when the laws do not care when you apply them — which is why an expanding universe is permitted to break it, and does.\n\nDerivation: the symmetry is t -> t + s. Noether’s conserved quantity is v·dL/dv - L, which is the energy. Note exactly what it needs: a Lagrangian with no explicit t in it.",
+      "description": "Noether applied to time translation. Energy is conserved exactly when the laws do not care when you apply them — which is why an expanding universe is permitted to break it, and does.\n\nDerivation: the symmetry is $t\\to t+s$, and Noether's charge is $$E=\\dot q\\,\\frac{\\partial L}{\\partial\\dot q}-L$$ the energy. Note exactly what it needs: $\\partial L/\\partial t=0$, a Lagrangian with no explicit $t$ in it.",
       "requires": [
         "noethers-theorem",
         "homogeneity-of-time"
@@ -297,7 +297,7 @@
     {
       "id": "conservation-of-angular-momentum",
       "name": "Derive conservation of angular momentum",
-      "description": "Noether applied to rotation. What is conserved is really a plane rather than an axis; in three dimensions the two have the same number of components, which is a happy accident of three and nothing deeper.\n\nDerivation: the symmetry is an infinitesimal rotation q -> q + e x q. Noether’s quantity is the sum of q x p — properly an antisymmetric tensor, which in three dimensions happens to have three components and can pass for a vector.",
+      "description": "Noether applied to rotation. What is conserved is really a plane rather than an axis; in three dimensions the two have the same number of components, which is a happy accident of three and nothing deeper.\n\nDerivation: the symmetry is an infinitesimal rotation $\\delta\\mathbf q=\\boldsymbol\\epsilon\\times\\mathbf q$, giving $$\\mathbf L=\\sum_i \\mathbf q_i\\times\\mathbf p_i$$ properly the antisymmetric $L^{ij}=q^ip^j-q^jp^i$, which in three dimensions happens to have three components and can pass for a vector.",
       "requires": [
         "noethers-theorem",
         "isotropy-of-space"
@@ -306,7 +306,7 @@
     {
       "id": "newtons-laws",
       "name": "Recover Newton’s laws",
-      "description": "For a Lagrangian of the form kinetic minus potential, the Euler-Lagrange equation reads F equals dp/dt, and the first law is the assertion that an inertial frame exists at all. Newton arrives as a corollary some way down the tree rather than at the top of it.\n\nDerivation: put L = T - V into the Euler-Lagrange equation. dL/dv is the momentum and dL/dq is minus the gradient of V, so the equation reads dp/dt = F. The first law is the assertion that the frame this was written in exists; the third comes separately, from momentum conservation.",
+      "description": "For a Lagrangian of the form kinetic minus potential, the Euler-Lagrange equation reads F equals dp/dt, and the first law is the assertion that an inertial frame exists at all. Newton arrives as a corollary some way down the tree rather than at the top of it.\n\nDerivation: put $L=T-V$ into the Euler–Lagrange equation. Then $\\partial L/\\partial\\dot q=p$ and $\\partial L/\\partial q=-\\nabla V$, so it reads $$\\frac{d\\mathbf p}{dt}=\\mathbf F$$ The first law is the assertion that the frame this was written in exists; the third comes separately, from momentum conservation.",
       "requires": [
         "mass-and-momentum"
       ]
@@ -314,7 +314,7 @@
     {
       "id": "newtons-third-law",
       "name": "Recover the third law",
-      "description": "Equal and opposite forces are what momentum conservation looks like when only two bodies are involved. It quietly fails as soon as the interaction takes time to cross the gap, which is the first crack a field will have to fill.\n\nDerivation: two isolated bodies have constant total momentum, so dp1/dt = -dp2/dt: the forces are equal and opposite because what one body loses the other gains. The argument needs the transfer to be instantaneous, which is the crack a field is later invented to fill.",
+      "description": "Equal and opposite forces are what momentum conservation looks like when only two bodies are involved. It quietly fails as soon as the interaction takes time to cross the gap, which is the first crack a field will have to fill.\n\nDerivation: two isolated bodies have $\\mathbf p_1+\\mathbf p_2$ constant, so $\\dot{\\mathbf p}_1=-\\dot{\\mathbf p}_2$ and $\\mathbf F_{12}=-\\mathbf F_{21}$: what one body loses the other gains. The argument needs the transfer to be instantaneous, which is the crack a field is later invented to fill.",
       "requires": [
         "conservation-of-momentum"
       ]
@@ -322,7 +322,7 @@
     {
       "id": "potentials-and-forces",
       "name": "Work with potentials and conservative forces",
-      "description": "A force that is the gradient of a potential does work depending only on the endpoints. The potential is the object worth carrying; the force is a derivative of it.\n\nDerivation: energy conservation says the work around any closed loop is zero; by Stokes that means the force has no curl; and a curl-free field on a simply connected region is the gradient of something. So F = -grad V, with V fixed up to an additive constant.",
+      "description": "A force that is the gradient of a potential does work depending only on the endpoints. The potential is the object worth carrying; the force is a derivative of it.\n\nDerivation: energy conservation says $\\oint\\mathbf F\\cdot d\\mathbf r=0$; by Stokes that means $\\nabla\\times\\mathbf F=0$; and a curl-free field on a simply connected region is a gradient. So $\\mathbf F=-\\nabla V$, with $V$ fixed up to an additive constant.",
       "requires": [
         "newtons-laws",
         "vector-calculus",
@@ -332,7 +332,7 @@
     {
       "id": "central-force-motion",
       "name": "Solve the central-force problem",
-      "description": "Two conserved quantities cut the problem down to one dimension, and in the inverse-square case the orbit closes into a Kepler ellipse. Almost the entire solution is a consequence of symmetry rather than of the force law.\n\nDerivation: conserved angular momentum fixes the plane and gives r^2·dtheta/dt = L/m, which eliminates the angle. Substituting into the conserved energy, kinetic plus the potential V(r), leaves a one-dimensional problem in r with an extra L^2/2mr^2 barrier; for V proportional to -1/r the orbit closes into an ellipse.",
+      "description": "Two conserved quantities cut the problem down to one dimension, and in the inverse-square case the orbit closes into a Kepler ellipse. Almost the entire solution is a consequence of symmetry rather than of the force law.\n\nDerivation: conserved $L$ fixes the plane and gives $mr^2\\dot\\theta=L$, eliminating the angle. Substituting into the conserved energy leaves a one-dimensional problem with a centrifugal barrier: $$E=\\tfrac12 m\\dot r^2+\\frac{L^2}{2mr^2}+V(r)$$ and for $V\\propto-1/r$ the orbit closes into an ellipse.",
       "requires": [
         "potentials-and-forces",
         "conservation-of-angular-momentum"
@@ -341,7 +341,7 @@
     {
       "id": "small-oscillations",
       "name": "Find normal modes",
-      "description": "Expand any potential about its minimum and the system becomes a set of independent oscillators. Nearly everything in physics that can be solved exactly is this, and a field is what happens when the oscillators become a continuum.\n\nDerivation: expand V about a minimum to second order and the kinetic energy about zero velocity, giving two quadratic forms. Diagonalising them simultaneously — a generalised eigenvalue problem — decouples the Euler-Lagrange equations into independent oscillators.",
+      "description": "Expand any potential about its minimum and the system becomes a set of independent oscillators. Nearly everything in physics that can be solved exactly is this, and a field is what happens when the oscillators become a continuum.\n\nDerivation: expand $V$ about a minimum to second order and $T$ about zero velocity, giving two quadratic forms $V_{ij}$ and $T_{ij}$. Diagonalising them simultaneously — the generalised eigenvalue problem $\\det(V_{ij}-\\omega^2T_{ij})=0$ — decouples the equations into independent oscillators.",
       "requires": [
         "euler-lagrange",
         "linear-algebra"
@@ -350,7 +350,7 @@
     {
       "id": "rigid-body-motion",
       "name": "Rotate a rigid body",
-      "description": "The inertia tensor, Euler’s equations, and the fact that a thrown book tumbles when spun about its middle axis. Three dimensions, and rotations that refuse to commute.\n\nDerivation: freeze every interparticle distance, leaving six degrees of freedom. Summing m·r x (omega x r) over the body gives angular momentum L = I·omega with I the inertia tensor, and writing the angular momentum law in the body frame gives Euler’s equations.",
+      "description": "The inertia tensor, Euler’s equations, and the fact that a thrown book tumbles when spun about its middle axis. Three dimensions, and rotations that refuse to commute.\n\nDerivation: freeze every interparticle distance, leaving six degrees of freedom. Summing $m\\,\\mathbf r\\times(\\boldsymbol\\omega\\times\\mathbf r)$ over the body gives $L_i=I_{ij}\\omega_j$ with $I_{ij}$ the inertia tensor, and writing the angular momentum law in the body frame gives Euler's equations.",
       "requires": [
         "conservation-of-angular-momentum",
         "euler-lagrange"
@@ -359,7 +359,7 @@
     {
       "id": "rotating-frames",
       "name": "Work in an accelerating frame",
-      "description": "Centrifugal and Coriolis terms appear the moment a non-inertial frame is treated as though it were inertial. From the inside they are indistinguishable from real forces — the dress rehearsal for the equivalence principle.\n\nDerivation: differentiate a position vector twice in a frame turning at angular velocity omega, using the rigid-body relation between rates in the two frames. Two extra terms appear, -2m·omega x v and -m·omega x (omega x r); they look like forces only because the frame was treated as inertial when it is not.",
+      "description": "Centrifugal and Coriolis terms appear the moment a non-inertial frame is treated as though it were inertial. From the inside they are indistinguishable from real forces — the dress rehearsal for the equivalence principle.\n\nDerivation: differentiate a position vector twice in a frame turning at $\\boldsymbol\\omega$, using the rigid-body relation between rates in the two frames. Two extra terms appear, $$-2m\\,\\boldsymbol\\omega\\times\\mathbf v \\quad\\text{and}\\quad -m\\,\\boldsymbol\\omega\\times(\\boldsymbol\\omega\\times\\mathbf r)$$ which look like forces only because the frame was treated as inertial when it is not.",
       "requires": [
         "rigid-body-motion"
       ]
@@ -367,7 +367,7 @@
     {
       "id": "hamiltonian-mechanics",
       "name": "Pass to the Hamiltonian",
-      "description": "Legendre-transform velocity into momentum and second-order equations become a first-order flow on phase space. Nothing new is said; what changes is which structures you can see.\n\nDerivation: Legendre-transform the Lagrangian in the velocity — H = p·v - L, with v eliminated using p = dL/dv. Differentiating gives dq/dt = dH/dp and dp/dt = -dH/dq: one second-order equation traded for two first-order ones on phase space.",
+      "description": "Legendre-transform velocity into momentum and second-order equations become a first-order flow on phase space. Nothing new is said; what changes is which structures you can see.\n\nDerivation: Legendre-transform the Lagrangian in the velocity, $H=p\\dot q-L$, with $\\dot q$ eliminated using $p=\\partial L/\\partial\\dot q$. Differentiating gives $$\\dot q=\\frac{\\partial H}{\\partial p},\\qquad \\dot p=-\\frac{\\partial H}{\\partial q}$$ one second-order equation traded for two first-order ones on phase space.",
       "requires": [
         "mass-and-momentum"
       ]
@@ -375,7 +375,7 @@
     {
       "id": "poisson-brackets",
       "name": "Use Poisson brackets",
-      "description": "An algebra on functions of phase space in which time evolution is a bracket with the Hamiltonian, and every conserved quantity generates the symmetry it came from. This algebra is the one piece of classical structure quantum mechanics keeps whole.\n\nDerivation: for any function f(q,p), chain-rule df/dt and substitute Hamilton’s equations. The answer is {f,H}, with {f,g} = (df/dq)(dg/dp) - (df/dp)(dg/dq). Conserved quantities are those whose bracket with H vanishes, and each generates a flow of its own.",
+      "description": "An algebra on functions of phase space in which time evolution is a bracket with the Hamiltonian, and every conserved quantity generates the symmetry it came from. This algebra is the one piece of classical structure quantum mechanics keeps whole.\n\nDerivation: for any $f(q,p)$, chain-rule $df/dt$ and substitute Hamilton's equations. The answer is $\\dot f=\\{f,H\\}$, with $$\\{f,g\\}=\\frac{\\partial f}{\\partial q}\\frac{\\partial g}{\\partial p}-\\frac{\\partial f}{\\partial p}\\frac{\\partial g}{\\partial q}$$ Conserved quantities are those with $\\{f,H\\}=0$, and each generates a flow of its own.",
       "requires": [
         "hamiltonian-mechanics"
       ]
@@ -383,7 +383,7 @@
     {
       "id": "liouvilles-theorem",
       "name": "Prove Liouville’s theorem",
-      "description": "Hamiltonian flow preserves volume in phase space: a blob of possible states can be stirred past recognition but never squeezed. Statistical mechanics needs this before it is entitled to call any measure the natural one.\n\nDerivation: read Hamilton’s equations as a velocity field on phase space and take its divergence. The two terms are mixed second derivatives of H with opposite signs, so they cancel identically: the flow is incompressible and carries every region’s volume along unchanged.",
+      "description": "Hamiltonian flow preserves volume in phase space: a blob of possible states can be stirred past recognition but never squeezed. Statistical mechanics needs this before it is entitled to call any measure the natural one.\n\nDerivation: read Hamilton's equations as a velocity field on phase space and take its divergence: $$\\frac{\\partial\\dot q}{\\partial q}+\\frac{\\partial\\dot p}{\\partial p}=\\frac{\\partial^2H}{\\partial q\\,\\partial p}-\\frac{\\partial^2H}{\\partial p\\,\\partial q}=0$$ The flow is incompressible and carries every region's volume along unchanged.",
       "requires": [
         "hamiltonian-mechanics"
       ]
@@ -391,7 +391,7 @@
     {
       "id": "hamilton-jacobi",
       "name": "Solve by Hamilton-Jacobi",
-      "description": "Recast mechanics as a single partial differential equation for the action; trajectories then run perpendicular to surfaces of constant action, exactly as rays run perpendicular to wavefronts. The resemblance is not an analogy — it is the classical limit of a wave equation nobody had written yet.\n\nDerivation: look for a canonical transformation that makes the new Hamiltonian zero, so the new coordinates are constants. Its generating function S must satisfy dS/dt + H(q, dS/dq) = 0 — one first-order partial differential equation, whose solution is the action as a function of the endpoint.",
+      "description": "Recast mechanics as a single partial differential equation for the action; trajectories then run perpendicular to surfaces of constant action, exactly as rays run perpendicular to wavefronts. The resemblance is not an analogy — it is the classical limit of a wave equation nobody had written yet.\n\nDerivation: look for a canonical transformation that makes the new Hamiltonian zero, so the new coordinates are constants. Its generating function $S$ must satisfy $$\\frac{\\partial S}{\\partial t}+H\\!\\left(q,\\frac{\\partial S}{\\partial q}\\right)=0$$ one first-order partial differential equation, whose solution is the action as a function of the endpoint.",
       "requires": [
         "hamiltonian-mechanics"
       ]
@@ -399,7 +399,7 @@
     {
       "id": "chaos-and-integrability",
       "name": "Tell integrable from chaotic",
-      "description": "With enough conserved quantities the motion winds around a torus; with one fewer, neighbouring trajectories separate exponentially and the tenth decimal place of the initial condition decides the outcome. Determinism survives this, predictability does not.\n\nDerivation: n conserved quantities in involution confine an n-degree-of-freedom Hamiltonian flow to a torus in phase space, by Liouville-Arnold. Take one away and nothing bounds how fast neighbouring trajectories separate; generically the separation grows like e^(lambda t), so the initial condition would have to be known to infinite precision.",
+      "description": "With enough conserved quantities the motion winds around a torus; with one fewer, neighbouring trajectories separate exponentially and the tenth decimal place of the initial condition decides the outcome. Determinism survives this, predictability does not.\n\nDerivation: $n$ conserved quantities in involution confine an $n$-degree-of-freedom Hamiltonian flow to a torus in phase space, by Liouville–Arnold. Take one away and nothing bounds how fast neighbouring trajectories separate; generically $\\delta(t)\\sim\\delta_0 e^{\\lambda t}$, so the initial condition would have to be known to infinite precision.",
       "requires": [
         "hamiltonian-mechanics"
       ]
@@ -407,7 +407,7 @@
     {
       "id": "relativistic-action",
       "name": "Write the relativistic free-particle action",
-      "description": "The only Lorentz-invariant action available for a worldline is proportional to the proper time along it. A free particle takes the path of greatest ageing, and no new axiom was needed to say so.\n\nDerivation: the action has to be a number every frame agrees on, and the only invariant a free worldline carries is its own proper time. So S is proportional to the integral of dtau; the sign and the coefficient -mc^2 are fixed by requiring the low-speed limit to reproduce mv^2/2.",
+      "description": "The only Lorentz-invariant action available for a worldline is proportional to the proper time along it. A free particle takes the path of greatest ageing, and no new axiom was needed to say so.\n\nDerivation: the action has to be a number every frame agrees on, and the only invariant a free worldline carries is its own proper time. So $$S=-mc^2\\!\\int d\\tau=-mc^2\\!\\int\\sqrt{1-v^2/c^2}\\;dt$$ with the sign and coefficient fixed by requiring the low-speed limit to reproduce $\\tfrac12 mv^2$.",
       "requires": [
         "stationary-action",
         "spacetime-interval"
@@ -416,7 +416,7 @@
     {
       "id": "four-momentum",
       "name": "Assemble the four-momentum",
-      "description": "Energy and momentum are components of a single four-vector, conserved together because time translation and space translation are now one symmetry. The length of that vector is the mass.\n\nDerivation: apply p = dL/dv to L = -mc^2·sqrt(1 - v^2/c^2), giving p = gamma·mv, and take the energy as v·dL/dv - L, giving E = gamma·mc^2. The two assemble into a four-vector because the action they came from was an invariant.",
+      "description": "Energy and momentum are components of a single four-vector, conserved together because time translation and space translation are now one symmetry. The length of that vector is the mass.\n\nDerivation: apply $p=\\partial L/\\partial v$ to that Lagrangian and take the energy as $v\\,\\partial L/\\partial v-L$: $$\\mathbf p=\\gamma m\\mathbf v,\\qquad E=\\gamma mc^2,\\qquad p^{\\mu}=(E/c,\\mathbf p)$$ The two assemble into a four-vector because the action they came from was an invariant.",
       "requires": [
         "relativistic-action",
         "mass-and-momentum"
@@ -425,7 +425,7 @@
     {
       "id": "mass-energy-equivalence",
       "name": "Derive E = mc²",
-      "description": "A body at rest still has energy, in proportion to its mass; equivalently, mass is the rest energy of whatever is inside. Binding energy shows up as missing mass, which is the whole of nuclear physics compressed into one line.\n\nDerivation: compute the invariant length of that four-vector: E^2 - p^2c^2 = m^2c^4. Set p to zero and E = mc^2 is what is left — so mass is rest energy, and a bound system weighs less than its parts by the binding energy divided by c^2.",
+      "description": "A body at rest still has energy, in proportion to its mass; equivalently, mass is the rest energy of whatever is inside. Binding energy shows up as missing mass, which is the whole of nuclear physics compressed into one line.\n\nDerivation: compute the invariant length of that four-vector, $p^{\\mu}p_{\\mu}=m^2c^2$, which is $$E^2-p^2c^2=m^2c^4$$ Set $p=0$ and $E=mc^2$ is what is left — so mass is rest energy, and a bound system weighs less than its parts by $E_b/c^2$.",
       "requires": [
         "four-momentum"
       ]
@@ -433,7 +433,7 @@
     {
       "id": "field-concept",
       "name": "Replace action at a distance with a field",
-      "description": "A finite invariant speed forbids instantaneous forces, and once the force is delayed, momentum goes missing in the gap between the bodies. Give the gap its own momentum and the books balance again: the field is what conservation demands, not a convenience for drawing diagrams.\n\nDerivation: the light cone forbids influence faster than c, so when A moves, the change in the force on B arrives late. During the delay the third law fails and the total momentum of the two bodies is not conserved. Restore it by giving the intervening region momentum of its own — which is to say, by inventing a field.",
+      "description": "A finite invariant speed forbids instantaneous forces, and once the force is delayed, momentum goes missing in the gap between the bodies. Give the gap its own momentum and the books balance again: the field is what conservation demands, not a convenience for drawing diagrams.\n\nDerivation: the light cone forbids influence faster than $c$, so when $A$ moves, the change in the force on $B$ arrives late. During the delay $\\mathbf p_1+\\mathbf p_2$ is not conserved. Restore it by giving the intervening region momentum of its own — which is to say, by inventing a field.",
       "requires": [
         "minkowski-geometry",
         "newtons-third-law"
@@ -442,7 +442,7 @@
     {
       "id": "lagrangian-field-theory",
       "name": "Take the action of a field",
-      "description": "Promote the degrees of freedom from a handful of coordinates to a value at every point, and the action becomes an integral of a density over spacetime. Locality is the assumption that the density depends on the field here and its derivatives here, and on nothing far away.\n\nDerivation: take the coupled oscillators of the previous step and let their spacing go to zero. The discrete label becomes a continuous x, the sum over oscillators becomes an integral of a Lagrangian density, and the action becomes an integral over spacetime.",
+      "description": "Promote the degrees of freedom from a handful of coordinates to a value at every point, and the action becomes an integral of a density over spacetime. Locality is the assumption that the density depends on the field here and its derivatives here, and on nothing far away.\n\nDerivation: take the coupled oscillators of the previous step and let their spacing go to zero. The discrete label becomes a continuous $x$, the sum becomes an integral of a density, and the action becomes $$S=\\int\\mathcal{L}(\\phi,\\partial_{\\mu}\\phi)\\,d^4x$$ with $\\mathcal{L}$ depending on the field here and its derivatives here, and on nothing far away.",
       "requires": [
         "field-concept",
         "small-oscillations"
@@ -451,7 +451,7 @@
     {
       "id": "gauge-invariance",
       "name": "Recognise a gauge redundancy",
-      "description": "Some changes to a field leave every observable untouched: a redundancy in the description rather than a symmetry of the world. Insisting that the redundancy hold point by point rather than globally is the most productive demand anyone has ever made of a theory.\n\nDerivation: count. The field variables outnumber the physical degrees of freedom, so some transformation of them changes no observable. Requiring that this redundancy hold independently at every point, rather than globally, is what fixes the form of the interaction below.",
+      "description": "Some changes to a field leave every observable untouched: a redundancy in the description rather than a symmetry of the world. Insisting that the redundancy hold point by point rather than globally is the most productive demand anyone has ever made of a theory.\n\nDerivation: count. The field variables outnumber the physical degrees of freedom, so some transformation of them changes no observable — for electromagnetism $A_{\\mu}\\to A_{\\mu}+\\partial_{\\mu}\\chi$. Requiring that this redundancy hold independently at every point, rather than globally, is what fixes the form of the interaction below.",
       "requires": [
         "lagrangian-field-theory"
       ]
@@ -459,7 +459,7 @@
     {
       "id": "charge-conservation",
       "name": "Derive charge conservation",
-      "description": "Noether applied to an internal symmetry gives a conserved current — and a current conserves charge locally, so charge flows rather than vanishing here and reappearing there. Merely global conservation would need signals faster than the invariant speed.\n\nDerivation: Noether applied to the gauge symmetry — an internal one, acting on the field rather than on spacetime — gives a current j with div j = 0. Integrated over a volume this says the charge inside changes only by flux through the boundary — locally, which is the only kind of conservation a finite signal speed permits.",
+      "description": "Noether applied to an internal symmetry gives a conserved current — and a current conserves charge locally, so charge flows rather than vanishing here and reappearing there. Merely global conservation would need signals faster than the invariant speed.\n\nDerivation: Noether applied to the gauge symmetry — an internal one, acting on the field rather than on spacetime — gives $\\partial_{\\mu}j^{\\mu}=0$, that is $$\\frac{\\partial\\rho}{\\partial t}+\\nabla\\cdot\\mathbf j=0$$ so the charge in a volume changes only by flux through its boundary: locally, the only kind a finite signal speed permits.",
       "requires": [
         "gauge-invariance"
       ]
@@ -467,7 +467,7 @@
     {
       "id": "maxwell-equations",
       "name": "Derive Maxwell’s equations",
-      "description": "Ask for the simplest local action for a massless vector field that is both Lorentz invariant and gauge invariant, and there is essentially one answer. Two of the famous four then turn out to be identities about the potential rather than laws about the world.\n\nDerivation: build the simplest Lorentz-invariant, gauge-invariant action from the potential A. Gauge invariance permits only the combination F = dA; Lorentz invariance permits only F^2 at lowest order; and charge conservation permits the coupling j·A. Varying A gives two of the four equations, and the other two are the identity dF = 0, automatic for any F built as dA.",
+      "description": "Ask for the simplest local action for a massless vector field that is both Lorentz invariant and gauge invariant, and there is essentially one answer. Two of the famous four then turn out to be identities about the potential rather than laws about the world.\n\nDerivation: build the simplest Lorentz- and gauge-invariant action from $A_{\\mu}$. Gauge invariance permits only $F_{\\mu\\nu}=\\partial_{\\mu}A_{\\nu}-\\partial_{\\nu}A_{\\mu}$; Lorentz invariance permits only $F^2$ at lowest order; conservation permits the coupling $j^{\\mu}A_{\\mu}$: $$S=\\int\\left(-\\tfrac{1}{4}F_{\\mu\\nu}F^{\\mu\\nu}-j^{\\mu}A_{\\mu}\\right)d^4x$$ Varying $A$ gives $\\partial_{\\mu}F^{\\mu\\nu}=j^{\\nu}$; the other two equations are the identity $\\partial_{[\\alpha}F_{\\mu\\nu]}=0$, automatic for any $F$ built as a curl of $A$.",
       "requires": [
         "charge-conservation"
       ]
@@ -475,7 +475,7 @@
     {
       "id": "lorentz-force",
       "name": "Derive the Lorentz force",
-      "description": "Couple the field to a charged worldline in the only gauge-invariant way there is, and the force law drops out of the same action that produced the field equations. Minimal coupling is a conclusion here, not a recipe handed down.\n\nDerivation: add the term q·A·dx/dtau to the free-particle action — the only gauge-invariant coupling available — and vary the worldline instead of the field. Out comes dp/dtau = qF·u, with F the same Maxwell field tensor the field equations were written for; in three-vector form that is q(E + v x B).",
+      "description": "Couple the field to a charged worldline in the only gauge-invariant way there is, and the force law drops out of the same action that produced the field equations. Minimal coupling is a conclusion here, not a recipe handed down.\n\nDerivation: add $q\\!\\int A_{\\mu}dx^{\\mu}$ to the free-particle action — the only gauge-invariant coupling there is — and vary the worldline instead of the field: $$\\frac{dp^{\\mu}}{d\\tau}=qF^{\\mu\\nu}u_{\\nu}\\;\\longrightarrow\\;\\mathbf F=q(\\mathbf E+\\mathbf v\\times\\mathbf B)$$ with $F$ the same field tensor the field equations were written for.",
       "requires": [
         "maxwell-equations",
         "relativistic-action"
@@ -484,7 +484,7 @@
     {
       "id": "electrostatics-and-magnetostatics",
       "name": "Solve the static cases",
-      "description": "Coulomb, Gauss, Biot-Savart, and the whole of circuit and magnet intuition, recovered as the limit in which nothing changes with time. Most people meet this material first; it belongs here because it is a special case.\n\nDerivation: set every time derivative to zero and the equations decouple. div E = rho with curl E = 0 is solved by E = -grad phi with Poisson’s equation for phi; curl B = j with div B = 0 is solved by the Biot-Savart integral.",
+      "description": "Coulomb, Gauss, Biot-Savart, and the whole of circuit and magnet intuition, recovered as the limit in which nothing changes with time. Most people meet this material first; it belongs here because it is a special case.\n\nDerivation: set every time derivative to zero and the equations decouple. $\\nabla\\cdot\\mathbf E=\\rho/\\epsilon_0$ with $\\nabla\\times\\mathbf E=0$ is solved by $\\mathbf E=-\\nabla\\phi$ with $\\nabla^2\\phi=-\\rho/\\epsilon_0$; $\\nabla\\times\\mathbf B=\\mu_0\\mathbf j$ with $\\nabla\\cdot\\mathbf B=0$ is solved by the Biot–Savart integral.",
       "requires": [
         "maxwell-equations"
       ]
@@ -492,7 +492,7 @@
     {
       "id": "electromagnetic-waves",
       "name": "Find the wave solutions",
-      "description": "In empty space the equations force a wave, moving at a speed built out of two constants measured in laboratories with no light in them. This is exactly why Maxwell concluded that light was electromagnetic.\n\nDerivation: in vacuum, take the curl of one of Maxwell’s two curl equations and substitute the other. Each field component obeys a wave equation with speed 1/sqrt(eps0·mu0), and Fourier’s plane waves are its solutions — transverse, with E, B and the direction of travel mutually perpendicular.",
+      "description": "In empty space the equations force a wave, moving at a speed built out of two constants measured in laboratories with no light in them. This is exactly why Maxwell concluded that light was electromagnetic.\n\nDerivation: in vacuum, take the curl of one of Maxwell's two curl equations and substitute the other: $$\\nabla^2\\mathbf E=\\frac{1}{c^2}\\frac{\\partial^2\\mathbf E}{\\partial t^2},\\qquad c=\\frac{1}{\\sqrt{\\epsilon_0\\mu_0}}$$ Fourier's plane waves are its solutions — transverse, with $\\mathbf E$, $\\mathbf B$ and the direction of travel mutually perpendicular.",
       "requires": [
         "maxwell-equations",
         "fourier-analysis"
@@ -501,7 +501,7 @@
     {
       "id": "identify-c-with-light",
       "name": "Identify the invariant speed with the speed of light",
-      "description": "The constant the symmetry argument left free and the constant in the wave equation are the same number. Light travels at it because light is massless; the speed belongs to spacetime rather than to light, and the distinction is worth keeping straight.\n\nDerivation: none, and that is the point. Two numbers measured in unrelated experiments — the constant left free by the frame-change group, and the speed of the wave solution, 1/sqrt(eps0·mu0), got from a capacitor and a coil — turn out to be equal. This is the check that the two halves of the tree are describing one world.",
+      "description": "The constant the symmetry argument left free and the constant in the wave equation are the same number. Light travels at it because light is massless; the speed belongs to spacetime rather than to light, and the distinction is worth keeping straight.\n\nDerivation: none, and that is the point. Two numbers measured in unrelated experiments — the $\\kappa$ left free by the frame-change group, and $1/\\sqrt{\\epsilon_0\\mu_0}$ got from a capacitor and a coil — satisfy $\\kappa=1/c^2$ with the same $c$. This is the check that the two halves of the tree are describing one world.",
       "requires": [
         "electromagnetic-waves",
         "invariant-speed"
@@ -510,7 +510,7 @@
     {
       "id": "radiation",
       "name": "Compute radiation from accelerating charges",
-      "description": "An accelerated charge throws away energy it cannot get back. Applied to an electron circling a nucleus this predicts an atom that spirals in within nanoseconds — the sharpest prediction classical physics ever made, and the most comprehensively wrong.\n\nDerivation: solve the wave equation with a moving point source. The retarded field splits into a near piece falling as 1/r^2 and a piece proportional to the acceleration falling as 1/r. Only the second carries flux out to infinity, at the Larmor rate proportional to a^2.",
+      "description": "An accelerated charge throws away energy it cannot get back. Applied to an electron circling a nucleus this predicts an atom that spirals in within nanoseconds — the sharpest prediction classical physics ever made, and the most comprehensively wrong.\n\nDerivation: solve the wave equation with a moving point source. The retarded field splits into a near piece falling as $1/r^2$ and a piece proportional to the acceleration falling as $1/r$. Only the second carries flux to infinity, at the Larmor rate $$P=\\frac{q^2a^2}{6\\pi\\epsilon_0c^3}$$",
       "requires": [
         "lorentz-force",
         "electromagnetic-waves"
@@ -519,7 +519,7 @@
     {
       "id": "optics",
       "name": "Explain interference, diffraction and refraction",
-      "description": "Waves superpose, bend at boundaries, and cancel outright in the dark fringes. Fermat’s principle of least time turns out to be the action principle arriving from the other direction.\n\nDerivation: superpose solutions to get interference and diffraction; impose continuity of the fields across a boundary to get reflection and refraction. In the short-wavelength limit stationary phase selects the path of least time — the action principle again, arriving from the other side.",
+      "description": "Waves superpose, bend at boundaries, and cancel outright in the dark fringes. Fermat’s principle of least time turns out to be the action principle arriving from the other direction.\n\nDerivation: superpose solutions to get interference and diffraction; impose continuity of the fields across a boundary to get $n_1\\sin\\theta_1=n_2\\sin\\theta_2$. In the short-wavelength limit stationary phase selects the path of least time, $\\delta\\!\\int n\\,ds=0$ — the action principle again, arriving from the other side.",
       "requires": [
         "electromagnetic-waves"
       ]
@@ -527,7 +527,7 @@
     {
       "id": "stress-energy-tensor",
       "name": "Build the stress-energy tensor",
-      "description": "Noether for spacetime translations, applied to a field, gives a tensor whose entries are energy density, momentum density, pressure and stress. This is the object gravity will turn out to couple to, which is why gravity couples to absolutely everything.\n\nDerivation: Noether for the four spacetime translations, applied to a Lagrangian density rather than to a Lagrangian, gives four conserved currents, which assemble into one rank-two tensor T with div T = 0. Its components are the densities and fluxes of energy and momentum: energy density, momentum density, pressure, shear.",
+      "description": "Noether for spacetime translations, applied to a field, gives a tensor whose entries are energy density, momentum density, pressure and stress. This is the object gravity will turn out to couple to, which is why gravity couples to absolutely everything.\n\nDerivation: Noether for the four spacetime translations, applied to a Lagrangian density rather than a Lagrangian, gives four conserved currents that assemble into $$T^{\\mu\\nu}=\\frac{\\partial\\mathcal{L}}{\\partial(\\partial_{\\mu}\\phi)}\\partial^{\\nu}\\phi-\\eta^{\\mu\\nu}\\mathcal{L},\\qquad \\partial_{\\mu}T^{\\mu\\nu}=0$$ whose components are the densities and fluxes of energy and momentum.",
       "requires": [
         "lagrangian-field-theory"
       ]
@@ -535,7 +535,7 @@
     {
       "id": "equivalence-principle",
       "name": "State the equivalence principle",
-      "description": "If everything falls alike, then falling is not something a body does but something a frame does. A uniform gravitational field is a choice of coordinates, exactly as centrifugal force was — gravity is the one force you can switch off by jumping.\n\nDerivation: in a rotating frame a force appears that is exactly proportional to mass and disappears on changing frames. Universal free fall says gravity has the first property to a part in 10^15. Assume it has the second as well, and a uniform gravitational field is removable by falling.",
+      "description": "If everything falls alike, then falling is not something a body does but something a frame does. A uniform gravitational field is a choice of coordinates, exactly as centrifugal force was — gravity is the one force you can switch off by jumping.\n\nDerivation: in a rotating frame a force appears that is exactly proportional to mass and disappears on changing frames. Universal free fall says gravity has the first property to a part in $10^{15}$. Assume it has the second as well, and a uniform gravitational field is removable by falling.",
       "requires": [
         "universal-free-fall",
         "rotating-frames"
@@ -544,7 +544,7 @@
     {
       "id": "local-inertial-frames",
       "name": "Build a local inertial frame",
-      "description": "In free fall, over a small enough patch, special relativity holds exactly. \"Small enough\" carries the entire content: gravity is precisely what stops the patches being glued into one flat chart.\n\nDerivation: fall freely and the field is gone, so Minkowski geometry holds exactly — but only where the field counts as uniform, so only over a small patch. The principle hands over a patchwork of Minkowski frames and no instruction for sewing them together.",
+      "description": "In free fall, over a small enough patch, special relativity holds exactly. \"Small enough\" carries the entire content: gravity is precisely what stops the patches being glued into one flat chart.\n\nDerivation: fall freely and the field is gone, so Minkowski geometry holds exactly — $g_{\\mu\\nu}(P)=\\eta_{\\mu\\nu}$ with $\\partial_{\\alpha}g_{\\mu\\nu}(P)=0$ at the chosen point, but only there. \"Small enough\" carries the whole content: the principle hands over a patchwork of Minkowski frames and no instruction for sewing them together.",
       "requires": [
         "equivalence-principle",
         "minkowski-geometry"
@@ -553,7 +553,7 @@
     {
       "id": "curved-spacetime",
       "name": "Model gravity as curvature",
-      "description": "A space flat in every small patch but admitting no global flat chart is a curved manifold with a metric on it. Gravity stops being a force and becomes the shape the metric describes.\n\nDerivation: a family of charts, each Minkowski at its own origin, with no single chart Minkowski everywhere, is the definition of a Lorentzian manifold. Take the metric to be the gravitational field and the patchwork becomes the tangent spaces.",
+      "description": "A space flat in every small patch but admitting no global flat chart is a curved manifold with a metric on it. Gravity stops being a force and becomes the shape the metric describes.\n\nDerivation: a family of charts, each Minkowski at its own origin, with no single chart Minkowski everywhere, is the definition of a Lorentzian manifold. Take $g_{\\mu\\nu}$ to be the gravitational field and the patchwork becomes the tangent spaces.",
       "requires": [
         "local-inertial-frames",
         "differential-geometry"
@@ -562,7 +562,7 @@
     {
       "id": "geodesic-motion",
       "name": "Derive geodesic motion",
-      "description": "Extremise proper time in a curved metric and free fall follows a geodesic — the same action principle as before, now with one assumption fewer. Note carefully what this does not deliver: any word about how the metric is decided.\n\nDerivation: keep S proportional to the integral of dtau and evaluate the proper time with the curved metric instead of the flat one. Varying gives the geodesic equation, with Christoffel symbols where the force used to be. The mass cancels — so universal free fall, the input two steps back, is now a theorem.",
+      "description": "Extremise proper time in a curved metric and free fall follows a geodesic — the same action principle as before, now with one assumption fewer. Note carefully what this does not deliver: any word about how the metric is decided.\n\nDerivation: keep $S=-mc^2\\!\\int d\\tau$ and evaluate the proper time with the curved metric. Varying gives $$\\frac{d^2x^{\\mu}}{d\\tau^2}+\\Gamma^{\\mu}_{\\alpha\\beta}\\frac{dx^{\\alpha}}{d\\tau}\\frac{dx^{\\beta}}{d\\tau}=0$$ with Christoffel symbols where the force used to be. The mass cancels — so universal free fall, the input two steps back, is now a theorem.",
       "requires": [
         "curved-spacetime",
         "relativistic-action"
@@ -571,7 +571,7 @@
     {
       "id": "tidal-forces-and-curvature",
       "name": "Measure curvature with tidal forces",
-      "description": "Two nearby free-fallers drift apart at a rate set by the Riemann tensor. This is the part of gravity that no choice of frame can remove, and therefore the part a field equation has to be about.\n\nDerivation: take two geodesics a small distance apart and expand. Their separation obeys the geodesic deviation equation, with the relative acceleration given by the Riemann tensor contracted with the separation and the velocities. No choice of frame sets Riemann to zero, which is why this survives the equivalence principle.",
+      "description": "Two nearby free-fallers drift apart at a rate set by the Riemann tensor. This is the part of gravity that no choice of frame can remove, and therefore the part a field equation has to be about.\n\nDerivation: take two geodesics a small distance $\\xi$ apart and expand. The separation obeys $$\\frac{D^2\\xi^{\\mu}}{d\\tau^2}=-R^{\\mu}{}_{\\alpha\\nu\\beta}\\,u^{\\alpha}\\xi^{\\nu}u^{\\beta}$$ No choice of frame sets $R$ to zero, which is why this survives the equivalence principle.",
       "requires": [
         "geodesic-motion"
       ]
@@ -579,7 +579,7 @@
     {
       "id": "einstein-field-equations",
       "name": "Derive the Einstein field equations",
-      "description": "Demand a local, generally covariant, second-order equation relating curvature to the stress-energy tensor, and in four dimensions Lovelock’s theorem says there is exactly one, up to two constants. The Newtonian limit fixes the first; the second is the cosmological constant, and it has been an embarrassment in both directions.\n\nDerivation: the source is T, which is symmetric and divergence-free, so whatever it equals must be too — and it has to be built from the curvature, since that is the part of gravity the tidal step showed no frame can remove. Lovelock’s theorem: in four dimensions the only symmetric, divergence-free tensor built from the metric and at most its second derivatives is a·G + b·g. The Newtonian limit fixes a as 8piG/c^4; b is the cosmological constant.",
+      "description": "Demand a local, generally covariant, second-order equation relating curvature to the stress-energy tensor, and in four dimensions Lovelock’s theorem says there is exactly one, up to two constants. The Newtonian limit fixes the first; the second is the cosmological constant, and it has been an embarrassment in both directions.\n\nDerivation: the source is $T_{\\mu\\nu}$, symmetric and divergence-free, so whatever it equals must be too — and it must be built from curvature, the part of gravity no frame removes. Lovelock: in four dimensions the only symmetric, divergence-free tensor from $g$ and at most its second derivatives is $aG_{\\mu\\nu}+bg_{\\mu\\nu}$. $$G_{\\mu\\nu}+\\Lambda g_{\\mu\\nu}=\\frac{8\\pi G}{c^4}T_{\\mu\\nu}$$ The Newtonian limit fixes $a$; $b$ is the cosmological constant.",
       "requires": [
         "tidal-forces-and-curvature",
         "stress-energy-tensor"
@@ -588,7 +588,7 @@
     {
       "id": "newtonian-gravity",
       "name": "Recover Newtonian gravity",
-      "description": "Weak field, slow motion, static source: the field equations collapse into Poisson’s equation and the inverse-square law, with one component of the metric playing the part of the potential. Three centuries of correct predictions, arriving as a limiting case.\n\nDerivation: take a weak static field, write the time-time metric component as -(1 + 2phi/c^2), and keep first order in phi at speeds well below c. The field equations collapse to Poisson’s equation for phi, and the geodesic equation to acceleration = -grad phi.",
+      "description": "Weak field, slow motion, static source: the field equations collapse into Poisson’s equation and the inverse-square law, with one component of the metric playing the part of the potential. Three centuries of correct predictions, arriving as a limiting case.\n\nDerivation: take a weak static field, write $g_{00}=-(1+2\\phi/c^2)$, and keep first order in $\\phi$ at $v\\ll c$. The field equations collapse to $\\nabla^2\\phi=4\\pi G\\rho$ and the geodesic equation to $\\ddot{\\mathbf r}=-\\nabla\\phi$ — three centuries of correct predictions, arriving as a limiting case.",
       "requires": [
         "einstein-field-equations",
         "potentials-and-forces"
@@ -597,7 +597,7 @@
     {
       "id": "black-holes",
       "name": "Solve for a black hole",
-      "description": "The Schwarzschild metric, a horizon that is a one-way surface rather than a place, and a singularity that is better read as the theory failing than as a point in space.\n\nDerivation: solve the vacuum equations for a static, spherically symmetric metric. Birkhoff’s theorem says the solution is unique — Schwarzschild’s — and at r = 2GM/c^2 the t and r coordinates exchange roles, so moving inward becomes as unavoidable as moving forward in time.",
+      "description": "The Schwarzschild metric, a horizon that is a one-way surface rather than a place, and a singularity that is better read as the theory failing than as a point in space.\n\nDerivation: solve the vacuum equations for a static, spherically symmetric metric. Birkhoff says the answer is unique: $$ds^2=-\\left(1-\\frac{r_s}{r}\\right)c^2dt^2+\\frac{dr^2}{1-r_s/r}+r^2d\\Omega^2$$ At $r_s=2GM/c^2$ the $t$ and $r$ coefficients change sign together, so moving inward becomes as unavoidable as moving forward in time.",
       "requires": [
         "einstein-field-equations"
       ]
@@ -605,7 +605,7 @@
     {
       "id": "gravitational-waves",
       "name": "Predict gravitational waves",
-      "description": "Perturb flat spacetime and the field equations hand back a wave travelling at the invariant speed — quadrupolar, because there is no such thing as a gravitational dipole. Detected directly in 2015, a century after the prediction and forty years after the indirect evidence.\n\nDerivation: write the metric as flat plus a small h, linearise, and fix a gauge. Every component of h then obeys the same wave equation the electromagnetic field does, travelling at c. Momentum conservation forbids a dipole term, so the leading radiation is quadrupole and correspondingly feeble.",
+      "description": "Perturb flat spacetime and the field equations hand back a wave travelling at the invariant speed — quadrupolar, because there is no such thing as a gravitational dipole. Detected directly in 2015, a century after the prediction and forty years after the indirect evidence.\n\nDerivation: write $g_{\\mu\\nu}=\\eta_{\\mu\\nu}+h_{\\mu\\nu}$ with $h$ small, linearise, and fix a gauge: $\\Box\\bar h_{\\mu\\nu}=0$, the same wave equation the electromagnetic field obeys, travelling at $c$. Momentum conservation forbids a dipole term, so the leading radiation is quadrupole and correspondingly feeble.",
       "requires": [
         "einstein-field-equations",
         "electromagnetic-waves"
@@ -614,7 +614,7 @@
     {
       "id": "cosmology",
       "name": "Model the universe as a whole",
-      "description": "Assume the homogeneity and isotropy of the roots hold on the very largest scales and the field equations reduce to one function of time. Conservation of energy is not available here: the axiom it was derived from is exactly the one this model gives up.\n\nDerivation: assume homogeneity and isotropy on the largest scales and the metric reduces to a single function of time, the scale factor. The field equations become the two Friedmann equations. A time-dependent metric has no time-translation symmetry, so Noether’s energy is not merely unconserved but unavailable.",
+      "description": "Assume the homogeneity and isotropy of the roots hold on the very largest scales and the field equations reduce to one function of time. Conservation of energy is not available here: the axiom it was derived from is exactly the one this model gives up.\n\nDerivation: assume homogeneity and isotropy on the largest scales and the metric reduces to a single function $a(t)$. The field equations become $$\\left(\\frac{\\dot a}{a}\\right)^{2}=\\frac{8\\pi G}{3}\\rho-\\frac{k}{a^2}+\\frac{\\Lambda}{3}$$ A time-dependent metric has no time-translation symmetry, so Noether's energy is not merely unconserved but unavailable.",
       "requires": [
         "einstein-field-equations"
       ]
@@ -631,7 +631,7 @@
     {
       "id": "work-and-heat",
       "name": "Separate work from heat",
-      "description": "Energy crossing a boundary in a way you can account for mechanically is work; whatever is left over is heat. The first law is conservation of energy with that second channel admitted, and it is what makes internal energy a function of state.\n\nDerivation: enclose a system adiabatically and the work needed to get from one state to another depends only on the two states, which defines the internal energy U. Remove the enclosure and the shortfall Q = dU - W is heat: the energy transfer that mechanical bookkeeping misses.",
+      "description": "Energy crossing a boundary in a way you can account for mechanically is work; whatever is left over is heat. The first law is conservation of energy with that second channel admitted, and it is what makes internal energy a function of state.\n\nDerivation: enclose a system adiabatically and the work between two states depends only on the states, defining $U$. Remove the enclosure and the shortfall is heat: $$dU=\\delta Q+\\delta W$$ Heat is what mechanical bookkeeping misses, defined by subtraction rather than by a substance.",
       "requires": [
         "empirical-temperature",
         "conservation-of-energy"
@@ -640,7 +640,7 @@
     {
       "id": "adiabatic-accessibility",
       "name": "Order states by adiabatic accessibility",
-      "description": "Write X before Y when Y can be reached from X by a process whose only trace on the surroundings is a weight raised or lowered. A relation between states, stated without temperature, without heat, and without any picture of what matter is made of.\n\nDerivation: write X before Y when some process takes X to Y leaving no trace on the surroundings but a raised or lowered weight — work alone, as just defined. Composing processes makes the relation transitive, and doing nothing makes it reflexive. Everything else is set aside, temperature included.",
+      "description": "Write X before Y when Y can be reached from X by a process whose only trace on the surroundings is a weight raised or lowered. A relation between states, stated without temperature, without heat, and without any picture of what matter is made of.\n\nDerivation: write $X\\prec Y$ when some process takes $X$ to $Y$ leaving no trace on the surroundings but a raised or lowered weight — work alone, as just defined. Composing processes makes $\\prec$ transitive, and doing nothing makes it reflexive. Everything else is set aside, temperature included.",
       "requires": [
         "work-and-heat"
       ]
@@ -648,7 +648,7 @@
     {
       "id": "entropy-and-second-law",
       "name": "Derive entropy from the ordering",
-      "description": "A handful of modest properties of that relation force the existence of a single real-valued function that increases exactly when one state is accessible from another, and adds up across independent systems. Lieb and Yngvason’s route: entropy comes out as a theorem rather than a definition, and heat is never mentioned.\n\nDerivation: assume four properties of that relation — comparability, scaling, splitting, and stability under small perturbations. They force a real function S, unique up to affine rescaling, with X before Y exactly when S(X) is at most S(Y), and additive across independent systems. The second law becomes a representation theorem.",
+      "description": "A handful of modest properties of that relation force the existence of a single real-valued function that increases exactly when one state is accessible from another, and adds up across independent systems. Lieb and Yngvason’s route: entropy comes out as a theorem rather than a definition, and heat is never mentioned.\n\nDerivation: assume four properties of $\\prec$ — comparability, scaling, splitting, and stability under small perturbations. They force a function $S$, unique up to $S\\to\\alpha S+\\beta$, with $$X\\prec Y\\iff S(X)\\le S(Y)$$ and $S$ additive across independent systems. The second law becomes a representation theorem.",
       "requires": [
         "adiabatic-accessibility"
       ]
@@ -656,7 +656,7 @@
     {
       "id": "absolute-temperature",
       "name": "Define absolute temperature",
-      "description": "Temperature appears as the integrating factor that turns inexact heat into an exact differential of entropy — the derivative of energy with respect to entropy. Now the scale means something, and zero on it is a real place rather than a convention.\n\nDerivation: with S and U both functions of state, define T as dU/dS at fixed volume. Then dU = T·dS - p·dV, so T is precisely the integrating factor that turns the inexact heat differential into an exact one. Its positivity and its zero are consequences, not conventions.",
+      "description": "Temperature appears as the integrating factor that turns inexact heat into an exact differential of entropy — the derivative of energy with respect to entropy. Now the scale means something, and zero on it is a real place rather than a convention.\n\nDerivation: with $S$ and $U$ both functions of state, define $$\\frac{1}{T}=\\left(\\frac{\\partial S}{\\partial U}\\right)_{V}$$ so that $dU=T\\,dS-p\\,dV$. $T$ is precisely the integrating factor turning the inexact $\\delta Q$ into an exact differential; its positivity and its zero are consequences, not conventions.",
       "requires": [
         "entropy-and-second-law"
       ]
@@ -664,7 +664,7 @@
     {
       "id": "thermodynamic-potentials",
       "name": "Choose the right potential",
-      "description": "Legendre transforms again, the same manoeuvre that produced the Hamiltonian: trade a variable for its conjugate to suit whatever you are holding fixed. Free energy, enthalpy, Gibbs, and the Maxwell relations that follow from mixed partial derivatives commuting.\n\nDerivation: the same Legendre transform that turned the Lagrangian into the Hamiltonian. Subtract TS from U for the Helmholtz free energy, add pV for enthalpy, do both for Gibbs. Equality of mixed second derivatives of each potential then hands over the Maxwell relations for nothing.",
+      "description": "Legendre transforms again, the same manoeuvre that produced the Hamiltonian: trade a variable for its conjugate to suit whatever you are holding fixed. Free energy, enthalpy, Gibbs, and the Maxwell relations that follow from mixed partial derivatives commuting.\n\nDerivation: the same Legendre transform that turned the Lagrangian into the Hamiltonian. $F=U-TS$, $H=U+pV$, $G=U-TS+pV$. Equality of mixed second derivatives then hands over the Maxwell relations for nothing, such as $$\\left(\\frac{\\partial S}{\\partial V}\\right)_{T}=\\left(\\frac{\\partial p}{\\partial T}\\right)_{V}$$",
       "requires": [
         "absolute-temperature",
         "hamiltonian-mechanics"
@@ -673,7 +673,7 @@
     {
       "id": "heat-engines",
       "name": "Bound the efficiency of an engine",
-      "description": "No cycle running between two temperatures beats Carnot’s, whatever it is built out of or what it runs on. This bound is where entropy was first noticed, and it is why the second law was believed long before anyone could say what the atoms were doing.\n\nDerivation: a cycle returns to its starting state, so its entropy change is zero, and the entropy dumped into the cold reservoir must at least match what was drawn from the hot one: Qc/Tc >= Qh/Th. The efficiency 1 - Qc/Qh is therefore at most 1 - Tc/Th, with equality only for a reversible cycle.",
+      "description": "No cycle running between two temperatures beats Carnot’s, whatever it is built out of or what it runs on. This bound is where entropy was first noticed, and it is why the second law was believed long before anyone could say what the atoms were doing.\n\nDerivation: a cycle returns to its starting state, so $\\oint dS=0$, and the entropy dumped into the cold reservoir must at least match what was drawn from the hot one: $Q_c/T_c\\ge Q_h/T_h$. Hence $$\\eta=1-\\frac{Q_c}{Q_h}\\le 1-\\frac{T_c}{T_h}$$ with equality only for a reversible cycle.",
       "requires": [
         "absolute-temperature"
       ]
@@ -681,7 +681,7 @@
     {
       "id": "microstates-and-macrostates",
       "name": "Count the microstates behind a macrostate",
-      "description": "One temperature and one pressure correspond to an unimaginable number of arrangements of the parts. The entire subject rests on the observation that the count is so lopsided that the typical case is the only case anyone ever sees.\n\nDerivation: a macrostate is a thin shell of phase space. Liouville says the one measure the dynamics preserves is phase-space volume, so count with that. The count compatible with a macrostate then grows exponentially in the number of parts, which is where every later lopsidedness comes from.",
+      "description": "One temperature and one pressure correspond to an unimaginable number of arrangements of the parts. The entire subject rests on the observation that the count is so lopsided that the typical case is the only case anyone ever sees.\n\nDerivation: a macrostate is a thin shell of phase space. Liouville says the one measure the dynamics preserves is phase-space volume, so count with that. The count compatible with a macrostate then grows like $W\\sim e^{cN}$, which is where every later lopsidedness comes from.",
       "requires": [
         "matter-is-made-of-parts",
         "probability",
@@ -691,7 +691,7 @@
     {
       "id": "statistical-postulate",
       "name": "Adopt the statistical postulate",
-      "description": "An isolated system in equilibrium is taken to be equally likely to be in any microstate it can reach. Liouville shows the dynamics at least preserves that measure, but the postulate itself is an axiom — honestly the weakest one in this tree, and still argued over.\n\nDerivation: none — this is an assumption. It says that every microstate compatible with the macrostate carries equal weight in the count. The uniform measure is at least the only one the dynamics is known to preserve, which is suggestive rather than conclusive; ergodicity would close the gap but has been proved for almost no system anyone cares about.",
+      "description": "An isolated system in equilibrium is taken to be equally likely to be in any microstate it can reach. Liouville shows the dynamics at least preserves that measure, but the postulate itself is an axiom — honestly the weakest one in this tree, and still argued over.\n\nDerivation: none — this is an assumption. It says every microstate compatible with the macrostate carries equal weight, $p_i=1/W$. The uniform measure is at least the only one the dynamics is known to preserve, which is suggestive rather than conclusive; ergodicity would close the gap but has been proved for almost no system anyone cares about.",
       "requires": [
         "microstates-and-macrostates"
       ]
@@ -699,7 +699,7 @@
     {
       "id": "boltzmann-entropy",
       "name": "Identify S with k log W",
-      "description": "The entropy derived from adiabatic accessibility and the logarithm of the number of microstates are the same function. Two derivations with no common ancestor arriving at one quantity is about the strongest evidence either of them could have.\n\nDerivation: the counted quantity must be additive over independent systems, whose microstate counts multiply — so it has to be a logarithm of the count. Matching that against the thermodynamic S, whose scale absolute temperature already fixed, determines the constant: S = k·log W.",
+      "description": "The entropy derived from adiabatic accessibility and the logarithm of the number of microstates are the same function. Two derivations with no common ancestor arriving at one quantity is about the strongest evidence either of them could have.\n\nDerivation: the counted quantity must be additive over independent systems, whose counts multiply, so it has to be a logarithm. Matching that against the thermodynamic $S$, whose scale absolute temperature already fixed, determines the constant: $$S=k\\ln W$$",
       "requires": [
         "statistical-postulate",
         "entropy-and-second-law"
@@ -708,7 +708,7 @@
     {
       "id": "canonical-ensemble",
       "name": "Derive the Boltzmann factor",
-      "description": "A small system in contact with a large one sits in a given state with probability falling exponentially in that state’s energy. Add those weights into a partition function and every thermodynamic quantity is a derivative of its logarithm.\n\nDerivation: put a small system in contact with a large reservoir and count the reservoir’s microstates when it has given up energy E. Expand log W to first order in E; the coefficient is 1/kT, so the probability goes as e^(-E/kT). Normalising defines the partition function Z, and F = -kT·log Z.",
+      "description": "A small system in contact with a large one sits in a given state with probability falling exponentially in that state’s energy. Add those weights into a partition function and every thermodynamic quantity is a derivative of its logarithm.\n\nDerivation: put a small system in contact with a large reservoir and count the reservoir's microstates when it has given up $E$. Expanding $\\ln W$ to first order, with coefficient $1/kT$: $$p_i=\\frac{e^{-E_i/kT}}{Z},\\qquad Z=\\sum_i e^{-E_i/kT},\\qquad F=-kT\\ln Z$$",
       "requires": [
         "boltzmann-entropy"
       ]
@@ -716,7 +716,7 @@
     {
       "id": "maximum-entropy-inference",
       "name": "Read statistical mechanics as inference",
-      "description": "The same distributions follow from maximising entropy subject to what you actually know, with no dynamics assumed at all. Jaynes’s claim is that the ensembles were always statements about our information; whether that is the whole story is a live argument, not a settled one.\n\nDerivation: maximise -sum p·log p subject to normalisation and a fixed mean energy. The Lagrange multiplier on the energy constraint is 1/kT and the solution is the same exponential — reached with no dynamics, no Liouville and no ergodicity, only a rule against assuming what you were not told.",
+      "description": "The same distributions follow from maximising entropy subject to what you actually know, with no dynamics assumed at all. Jaynes’s claim is that the ensembles were always statements about our information; whether that is the whole story is a live argument, not a settled one.\n\nDerivation: maximise $-\\sum_i p_i\\ln p_i$ subject to $\\sum p_i=1$ and a fixed $\\langle E\\rangle$. The Lagrange multiplier on the energy constraint is $\\beta=1/kT$ and the solution is the same exponential — reached with no dynamics, no Liouville and no ergodicity, only a rule against assuming what you were not told.",
       "requires": [
         "canonical-ensemble"
       ]
@@ -724,7 +724,7 @@
     {
       "id": "equipartition-and-gases",
       "name": "Apply equipartition",
-      "description": "Every quadratic degree of freedom carries kT/2, which gives the ideal gas law and the heat capacity of a solid in a couple of lines. It also predicts heat capacities that measurements flatly contradict, and outright catastrophe when applied to the electromagnetic field.\n\nDerivation: a coordinate appearing quadratically in the energy contributes a Gaussian integral to Z, whose logarithm is linear in T with slope one half. So each such mode carries kT/2. Applied to a solid’s normal modes it gives 3Nk; applied to a field, which has infinitely many modes, it gives infinity.",
+      "description": "Every quadratic degree of freedom carries kT/2, which gives the ideal gas law and the heat capacity of a solid in a couple of lines. It also predicts heat capacities that measurements flatly contradict, and outright catastrophe when applied to the electromagnetic field.\n\nDerivation: a coordinate appearing quadratically in the energy contributes a Gaussian integral to $Z$, whose logarithm is linear in $T$ with slope one half, so each such mode carries $\\tfrac12 kT$. Applied to a solid's $3N$ modes it gives $C=3Nk$; applied to a field, which has infinitely many modes, it gives $\\infty$.",
       "requires": [
         "canonical-ensemble",
         "small-oscillations"
@@ -733,7 +733,7 @@
     {
       "id": "fluctuations",
       "name": "Estimate fluctuations",
-      "description": "Thermodynamic quantities wobble by a relative amount going as one over the square root of the number of parts — which is why thermodynamics looks exact, and why a pollen grain visibly does not sit still. Measuring that wobble is where the atomic hypothesis stopped being a hypothesis.\n\nDerivation: the variance of the energy is the second derivative of log Z with respect to 1/kT, which works out to kT^2·C. Both C and E scale with N, so the relative fluctuation scales as one over the square root of N — invisible in a gas cylinder, visible in a suspended grain, and that visible case counts N.",
+      "description": "Thermodynamic quantities wobble by a relative amount going as one over the square root of the number of parts — which is why thermodynamics looks exact, and why a pollen grain visibly does not sit still. Measuring that wobble is where the atomic hypothesis stopped being a hypothesis.\n\nDerivation: the variance of the energy is the second derivative of $\\ln Z$ with respect to $\\beta$, which works out to $\\langle\\Delta E^2\\rangle=kT^2C$. Both $C$ and $E$ scale with $N$, so $$\\frac{\\Delta E}{E}\\sim\\frac{1}{\\sqrt N}$$ invisible in a gas cylinder, visible in a suspended grain — and that visible case counts $N$.",
       "requires": [
         "canonical-ensemble"
       ]
@@ -741,7 +741,7 @@
     {
       "id": "phase-transitions",
       "name": "Analyse a phase transition",
-      "description": "A free energy with a point where it is not analytic — something a finite system cannot produce, so a sharp transition is really a statement about an infinite limit. Near the critical point, substances with nothing whatever in common behave identically.\n\nDerivation: for a finite system Z is a finite sum of exponentials, hence analytic, so its free energy cannot have a kink. A sharp transition therefore requires the infinite-volume limit, where the zeros of Z can close in on the real temperature axis and pinch it.",
+      "description": "A free energy with a point where it is not analytic — something a finite system cannot produce, so a sharp transition is really a statement about an infinite limit. Near the critical point, substances with nothing whatever in common behave identically.\n\nDerivation: for a finite system $Z$ is a finite sum of exponentials, hence analytic, so $F=-kT\\ln Z$ cannot have a kink. A sharp transition therefore requires $N\\to\\infty$, where the zeros of $Z$ can close in on the real temperature axis and pinch it.",
       "requires": [
         "canonical-ensemble",
         "thermodynamic-potentials"
@@ -750,7 +750,7 @@
     {
       "id": "renormalisation-group",
       "name": "Coarse-grain with the renormalisation group",
-      "description": "Ask how a description changes as you deliberately blur it, and universality stops being a coincidence: the details flow away under blurring and only a few numbers survive. The same idea will later rescue quantum field theory from its infinities.\n\nDerivation: integrate out the short-wavelength degrees of freedom and rescale, which defines a map on the space of couplings. A critical point is a fixed point of that map; the eigenvalues of its linearisation are the critical exponents, and the contracting directions are why unrelated substances share them.",
+      "description": "Ask how a description changes as you deliberately blur it, and universality stops being a coincidence: the details flow away under blurring and only a few numbers survive. The same idea will later rescue quantum field theory from its infinities.\n\nDerivation: integrate out the short-wavelength degrees of freedom and rescale, defining a map on the couplings, $\\frac{dg}{d\\ln b}=\\beta(g)$. A critical point is a fixed point of that map; the eigenvalues of its linearisation are the critical exponents, and the contracting directions are why unrelated substances share them.",
       "requires": [
         "phase-transitions"
       ]
@@ -767,7 +767,7 @@
     {
       "id": "classical-breakdown",
       "name": "Face the experiments classical physics cannot explain",
-      "description": "Atoms that ought to collapse in nanoseconds, a blackbody spectrum that ought to carry infinite energy, heat capacities that die away as things get cold, spectra made of sharp lines, and light that travels as a wave but arrives as a dot. Not anomalies at the margins: the axioms are wrong.\n\nDerivation: radiation says an orbiting electron spirals in within nanoseconds. Equipartition gives a blackbody infinite energy and gives solids heat capacities that refuse to fall at low temperature. Optics says light is a wave, yet it deposits energy in indivisible lumps. Three sound derivations, three wrong answers — so a premise is wrong, not a calculation.",
+      "description": "Atoms that ought to collapse in nanoseconds, a blackbody spectrum that ought to carry infinite energy, heat capacities that die away as things get cold, spectra made of sharp lines, and light that travels as a wave but arrives as a dot. Not anomalies at the margins: the axioms are wrong.\n\nDerivation: radiation says an orbiting electron spirals in within nanoseconds. Equipartition gives a blackbody $\\int\\!\\rho(\\nu)d\\nu=\\infty$ and gives solids heat capacities that refuse to fall at low $T$. Optics says light is a wave, yet it deposits energy in lumps of $h\\nu$. Three sound derivations, three wrong answers — so a premise is wrong, not a calculation.",
       "requires": [
         "radiation",
         "equipartition-and-gases",
@@ -777,7 +777,7 @@
     {
       "id": "retire-determinism",
       "name": "Retire determinism about outcomes",
-      "description": "Systems prepared identically, as far as any preparation can be checked, give different results. Either the preparation is secretly incomplete or the world is not deterministic, and a century of trying to have the first has been more expensive than accepting the second.\n\nDerivation: identical preparations yield different outcomes with stable frequencies. Either the preparation leaves something out, or outcomes are irreducibly probabilistic. Bell’s theorem, much later, makes the first option far more expensive than it looks from here.",
+      "description": "Systems prepared identically, as far as any preparation can be checked, give different results. Either the preparation is secretly incomplete or the world is not deterministic, and a century of trying to have the first has been more expensive than accepting the second.\n\nDerivation: identical preparations yield different outcomes with stable frequencies. Either the preparation leaves something out, or outcomes are irreducibly probabilistic. Bell's theorem, much later, makes the first option far more expensive than it looks from here.",
       "requires": [
         "classical-breakdown"
       ]
@@ -785,7 +785,7 @@
     {
       "id": "quantum-states",
       "name": "Represent a state as a ray in Hilbert space",
-      "description": "States are unit vectors up to an overall phase, and any superposition of states is again a state. Linearity is the axiom; interference is what you see because of it.\n\nDerivation: interference demands that states superpose, so they live in a complex vector space; stable frequencies demand a norm; and the overall phase is unobservable. Take unit vectors in a Hilbert space, identified up to phase — rays.",
+      "description": "States are unit vectors up to an overall phase, and any superposition of states is again a state. Linearity is the axiom; interference is what you see because of it.\n\nDerivation: interference demands that states superpose, so they live in a complex vector space; stable frequencies demand a norm; and the overall phase is unobservable, so $|\\psi\\rangle$ and $e^{i\\alpha}|\\psi\\rangle$ are the same state. Take unit vectors in a Hilbert space, identified up to phase — rays.",
       "requires": [
         "classical-breakdown",
         "hilbert-space"
@@ -794,7 +794,7 @@
     {
       "id": "observables-as-operators",
       "name": "Represent observables as self-adjoint operators",
-      "description": "Measurable quantities become self-adjoint operators and their possible values become the spectrum. Discrete spectra then explain sharp spectral lines with nothing further assumed — quantisation is an eigenvalue problem and not a separate postulate.\n\nDerivation: a measurement sorts states into outcomes, which is a family of orthogonal projections summing to the identity. Attach a real number to each and add them up: the result is a self-adjoint operator whose spectrum is the set of possible values. Where that spectrum is discrete, so are the measurements.",
+      "description": "Measurable quantities become self-adjoint operators and their possible values become the spectrum. Discrete spectra then explain sharp spectral lines with nothing further assumed — quantisation is an eigenvalue problem and not a separate postulate.\n\nDerivation: a measurement sorts states into outcomes, which is a family of orthogonal projections with $\\sum_i P_i=\\mathbb{1}$. Attach a real number to each and add: $\\hat A=\\sum_i a_iP_i$, a self-adjoint operator whose spectrum is the set of possible values. Where that spectrum is discrete, so are the measurements.",
       "requires": [
         "quantum-states"
       ]
@@ -802,7 +802,7 @@
     {
       "id": "born-rule",
       "name": "Derive the Born rule",
-      "description": "Ask for any consistent assignment of probabilities to the outcomes of every measurement that does not depend on which other measurements you happen to be contemplating, and Gleason’s theorem says it has to be the squared amplitude. The rule is forced. What it means is not.\n\nDerivation: determinism having been given up, what a state has to supply is a probability for each outcome. Ask only that it be assigned to each projection, additive over orthogonal ones, and independent of which other measurements are being contemplated alongside. Gleason’s theorem says that in dimension three or more every such assignment is tr(rho·P) — squared amplitude, with no freedom left anywhere.",
+      "description": "Ask for any consistent assignment of probabilities to the outcomes of every measurement that does not depend on which other measurements you happen to be contemplating, and Gleason’s theorem says it has to be the squared amplitude. The rule is forced. What it means is not.\n\nDerivation: determinism having been given up, a state must supply a probability for each outcome. Ask only that it be additive over orthogonal projections and independent of which other measurements are contemplated alongside. Gleason: in dimension three or more every such assignment is $$p(P)=\\mathrm{tr}(\\rho P)\\;\\longrightarrow\\;p=|\\langle a|\\psi\\rangle|^2$$ with no freedom left anywhere.",
       "requires": [
         "observables-as-operators",
         "retire-determinism"
@@ -811,7 +811,7 @@
     {
       "id": "superposition-and-interference",
       "name": "Explain interference",
-      "description": "Amplitudes add where probabilities would not, so two ways of getting somewhere can cancel each other out. The double slit stops being a paradox and becomes a direct reading of the two axioms above it.\n\nDerivation: a state reaching the detector by two routes has amplitude a1 + a2, so the Born probability is |a1|^2 + |a2|^2 + 2Re(a1*a2). The cross term is the interference, and it disappears the instant anything records which route was taken.",
+      "description": "Amplitudes add where probabilities would not, so two ways of getting somewhere can cancel each other out. The double slit stops being a paradox and becomes a direct reading of the two axioms above it.\n\nDerivation: a state reaching the detector by two routes has amplitude $a_1+a_2$, so the Born probability is $$|a_1|^2+|a_2|^2+2\\,\\mathrm{Re}(a_1^{*}a_2)$$ The cross term is the interference, and it disappears the instant anything records which route was taken.",
       "requires": [
         "born-rule"
       ]
@@ -819,7 +819,7 @@
     {
       "id": "unitary-evolution",
       "name": "Show that symmetries act unitarily",
-      "description": "Wigner’s theorem: any map on states preserving all the probabilities between them is unitary or antiunitary. Time evolution preserves them, so evolution is unitary — quantum theory is linear for a reason, not for convenience.\n\nDerivation: Wigner’s theorem — any map on rays preserving all transition probabilities comes from a unitary or an antiunitary operator. Evolution preserves them and is continuously connected to the identity, which rules out antiunitary. So evolution is unitary, and the theory is linear for a reason.",
+      "description": "Wigner’s theorem: any map on states preserving all the probabilities between them is unitary or antiunitary. Time evolution preserves them, so evolution is unitary — quantum theory is linear for a reason, not for convenience.\n\nDerivation: Wigner's theorem — any map on rays preserving $|\\langle\\phi|\\psi\\rangle|^2$ comes from a unitary or an antiunitary operator. Evolution preserves it and is continuously connected to the identity, which rules out antiunitary. So evolution is unitary, and the theory is linear for a reason.",
       "requires": [
         "quantum-states"
       ]
@@ -827,7 +827,7 @@
     {
       "id": "schrodinger-equation",
       "name": "Derive the Schrödinger equation",
-      "description": "A continuous one-parameter group of unitaries has a self-adjoint generator, by Stone’s theorem, and homogeneity of time says evolution is such a group. Call the generator the Hamiltonian and the equation has already been written for you.\n\nDerivation: evolutions compose, U(t+s) = U(t)U(s), so they form a one-parameter unitary group. Stone’s theorem gives it a unique self-adjoint generator H with U(t) = exp(-iHt/hbar); differentiating is the Schrodinger equation. Identifying that H with the classical Hamiltonian is a separate, physical step.",
+      "description": "A continuous one-parameter group of unitaries has a self-adjoint generator, by Stone’s theorem, and homogeneity of time says evolution is such a group. Call the generator the Hamiltonian and the equation has already been written for you.\n\nDerivation: evolutions compose, $U(t+s)=U(t)U(s)$, forming a one-parameter unitary group. Stone gives it a unique self-adjoint generator with $U(t)=e^{-i\\hat Ht/\\hbar}$; differentiating gives $$i\\hbar\\frac{\\partial}{\\partial t}|\\psi\\rangle=\\hat H|\\psi\\rangle$$ Identifying that $\\hat H$ with the classical Hamiltonian is a separate, physical step.",
       "requires": [
         "unitary-evolution"
       ]
@@ -835,7 +835,7 @@
     {
       "id": "canonical-commutation",
       "name": "Quantise the Poisson bracket",
-      "description": "Dirac’s correspondence swaps the bracket for a commutator divided by i hbar, and the classical algebra survives into the quantum theory almost intact. Almost: Groenewold and van Hove proved that no quantisation keeps the correspondence for every observable, so this is a bridge with a known gap in it.\n\nDerivation: demand that the operator assigned to a Poisson bracket be the commutator divided by i·hbar. For q and p this gives [q,p] = i·hbar, and Stone-von Neumann says the representation is then unique up to unitary equivalence. For cubic and higher observables Groenewold and van Hove proved no such assignment exists at all.",
+      "description": "Dirac’s correspondence swaps the bracket for a commutator divided by i hbar, and the classical algebra survives into the quantum theory almost intact. Almost: Groenewold and van Hove proved that no quantisation keeps the correspondence for every observable, so this is a bridge with a known gap in it.\n\nDerivation: demand that the operator assigned to a Poisson bracket be the commutator over $i\\hbar$, so $\\{q,p\\}=1$ becomes $$[\\hat q,\\hat p]=i\\hbar$$ Stone–von Neumann then makes the representation unique up to unitary equivalence. For cubic and higher observables Groenewold and van Hove proved no such assignment exists at all.",
       "requires": [
         "poisson-brackets",
         "observables-as-operators"
@@ -844,7 +844,7 @@
     {
       "id": "uncertainty-principle",
       "name": "Derive the uncertainty relations",
-      "description": "Operators that fail to commute cannot both have sharp values, with the bound following from the Cauchy-Schwarz inequality and nothing else. No disturbance by a clumsy measuring device is required; this is a statement about what a state can be.\n\nDerivation: apply Cauchy-Schwarz to the shifted operators A - <A> and B - <B>. The imaginary part of their inner product is half the expectation of the commutator, so the product of the two standard deviations is at least |<[A,B]>|/2 — for position and momentum, hbar/2.",
+      "description": "Operators that fail to commute cannot both have sharp values, with the bound following from the Cauchy-Schwarz inequality and nothing else. No disturbance by a clumsy measuring device is required; this is a statement about what a state can be.\n\nDerivation: apply Cauchy–Schwarz to $\\hat A-\\langle\\hat A\\rangle$ and $\\hat B-\\langle\\hat B\\rangle$. The imaginary part of their inner product is half the expectation of the commutator, giving $$\\sigma_A\\sigma_B\\ge\\tfrac12\\left|\\langle[\\hat A,\\hat B]\\rangle\\right|\\;\\longrightarrow\\;\\sigma_q\\sigma_p\\ge\\frac{\\hbar}{2}$$",
       "requires": [
         "canonical-commutation"
       ]
@@ -852,7 +852,7 @@
     {
       "id": "quantum-symmetries",
       "name": "Apply symmetry to quantum states",
-      "description": "Symmetries act through representations, and because states are rays rather than vectors those representations are allowed to be projective — which is how a rotation through two full turns can fail to be the identity.\n\nDerivation: the group acts on rays, so by Wigner each element gives a unitary determined only up to a phase. The composition law therefore holds only up to a phase: what acts is a projective representation, equivalently an ordinary representation of a central extension of the group.",
+      "description": "Symmetries act through representations, and because states are rays rather than vectors those representations are allowed to be projective — which is how a rotation through two full turns can fail to be the identity.\n\nDerivation: the group acts on rays, so by Wigner each element gives a unitary determined only up to a phase, and the composition law holds only up to one: $U(g_1)U(g_2)=e^{i\\varphi}U(g_1g_2)$. What acts is a projective representation, equivalently an ordinary representation of a central extension.",
       "requires": [
         "unitary-evolution",
         "representation-theory"
@@ -861,7 +861,7 @@
     {
       "id": "spin",
       "name": "Derive spin",
-      "description": "The projective representations of the rotation group are the ordinary representations of SU(2), and those come with half-integer labels having no classical counterpart at all. Spin is not a small body spinning; it is what isotropy permits once states are rays.\n\nDerivation: the projective representations of the rotation group are the ordinary representations of its double cover SU(2), labelled by j = 0, 1/2, 1, and so on. The half-integer ones have no classical counterpart, and the Noether charge of rotation becomes an operator with exactly those eigenvalues.",
+      "description": "The projective representations of the rotation group are the ordinary representations of SU(2), and those come with half-integer labels having no classical counterpart at all. Spin is not a small body spinning; it is what isotropy permits once states are rays.\n\nDerivation: the projective representations of $SO(3)$ are the ordinary representations of its double cover $SU(2)$, labelled by $j=0,\\tfrac12,1,\\dots$ with $$\\hat J^2|j,m\\rangle=\\hbar^2j(j+1)|j,m\\rangle$$ The half-integer labels have no classical counterpart: spin is what isotropy permits once states are rays.",
       "requires": [
         "quantum-symmetries",
         "conservation-of-angular-momentum"
@@ -870,7 +870,7 @@
     {
       "id": "identical-particles",
       "name": "Handle identical particles",
-      "description": "If swapping two particles changes nothing observable, the state can only pick up a phase, and in three dimensions that phase is plus or minus one. Bosons and fermions, out of permutation symmetry alone.\n\nDerivation: exchange is a symmetry whose square is the identity, so its unitary has eigenvalue +1 or -1. In three dimensions the paths that exchange two particles fall into only two homotopy classes, so those two cases exhaust the possibilities: bosons and fermions, and nothing in between.",
+      "description": "If swapping two particles changes nothing observable, the state can only pick up a phase, and in three dimensions that phase is plus or minus one. Bosons and fermions, out of permutation symmetry alone.\n\nDerivation: exchange is a symmetry whose square is the identity, so $P^2=1$ and its unitary has eigenvalue $\\pm1$: $\\psi(x_2,x_1)=\\pm\\psi(x_1,x_2)$. In three dimensions the exchange paths fall into only two homotopy classes, so those two cases exhaust the possibilities — bosons and fermions, nothing in between.",
       "requires": [
         "quantum-symmetries"
       ]
@@ -878,7 +878,7 @@
     {
       "id": "path-integral",
       "name": "Sum over histories",
-      "description": "Give every history an amplitude whose phase is its action divided by hbar, and add them all up. Away from the stationary path the phases cancel, which is why the principle this tree assumed near the top is true. The action principle is derived here, one storey below where it was borrowed.\n\nDerivation: slice the evolution into many short steps and insert a complete set of states between each pair. Each short amplitude is an exponential of the Lagrangian times the time step, so the whole is a sum over paths weighted by exp(iS/hbar). Away from stationary S neighbouring phases cancel — which is why the principle assumed at the top of the tree is true.",
+      "description": "Give every history an amplitude whose phase is its action divided by hbar, and add them all up. Away from the stationary path the phases cancel, which is why the principle this tree assumed near the top is true. The action principle is derived here, one storey below where it was borrowed.\n\nDerivation: slice the evolution into short steps and insert a complete set of states between each pair. Each short amplitude is an exponential of the Lagrangian times the step, so the whole is $$\\langle x_f|e^{-i\\hat HT/\\hbar}|x_i\\rangle=\\int\\mathcal{D}x\\;e^{iS[x]/\\hbar}$$ Away from stationary $S$ neighbouring phases cancel — which is why the principle assumed at the top of the tree is true.",
       "requires": [
         "born-rule",
         "stationary-action"
@@ -887,7 +887,7 @@
     {
       "id": "classical-limit",
       "name": "Take the classical limit",
-      "description": "When the actions involved are large compared with hbar only the stationary path survives the cancellation, and the phase of the wavefunction satisfies the Hamilton-Jacobi equation exactly. That odd rays-and-wavefronts resemblance in classical mechanics was a shadow of this the whole time.\n\nDerivation: when S is large next to hbar, stationary phase leaves only the extremal path standing. Substituting psi = A·exp(iS/hbar) into the Schrodinger equation and dropping the term carrying hbar gives back the Hamilton-Jacobi equation exactly, while the uncertainty bound becomes negligible against the scales involved.",
+      "description": "When the actions involved are large compared with hbar only the stationary path survives the cancellation, and the phase of the wavefunction satisfies the Hamilton-Jacobi equation exactly. That odd rays-and-wavefronts resemblance in classical mechanics was a shadow of this the whole time.\n\nDerivation: when $S\\gg\\hbar$, stationary phase leaves only the extremal path standing. Substituting $\\psi=Ae^{iS/\\hbar}$ into the Schrödinger equation and dropping the term carrying $\\hbar$ returns $$\\frac{\\partial S}{\\partial t}+H\\!\\left(q,\\frac{\\partial S}{\\partial q}\\right)=0$$ the Hamilton–Jacobi equation exactly, while $\\sigma_q\\sigma_p\\ge\\hbar/2$ becomes negligible against the scales involved.",
       "requires": [
         "path-integral",
         "hamilton-jacobi",
@@ -897,7 +897,7 @@
     {
       "id": "hydrogen-atom",
       "name": "Solve the hydrogen atom",
-      "description": "The Coulomb potential, separated in spherical coordinates, produces a discrete spectrum matching lines that had been measured and tabulated decades earlier. The stability classical radiation forbade is now a ground state with nowhere lower to fall.\n\nDerivation: put the Coulomb potential into the Schrodinger equation and separate it in spherical coordinates, exactly as the classical central-force problem was separated, with the same angular-momentum barrier. Requiring the radial solution to stay finite quantises the energy as -13.6 eV/n^2; spin doubles each level, and the spin-orbit coupling splits it.",
+      "description": "The Coulomb potential, separated in spherical coordinates, produces a discrete spectrum matching lines that had been measured and tabulated decades earlier. The stability classical radiation forbade is now a ground state with nowhere lower to fall.\n\nDerivation: put the Coulomb potential into the Schrödinger equation and separate in spherical coordinates, exactly as the classical central-force problem was separated, with the same $\\ell(\\ell+1)\\hbar^2/2mr^2$ barrier. Requiring the radial solution to stay finite quantises the energy: $$E_n=-\\frac{13.6\\ \\mathrm{eV}}{n^2}$$ Spin doubles each level, and spin–orbit coupling splits it.",
       "requires": [
         "schrodinger-equation",
         "central-force-motion",
@@ -907,7 +907,7 @@
     {
       "id": "entanglement",
       "name": "Describe a composite system",
-      "description": "Joint states live in a tensor product, and most of them do not factorise: the pair has a definite state while neither member does. Not an exotic corner case — the generic case.\n\nDerivation: the state space of a composite system is the tensor product, which is strictly larger than the set of product vectors. A state that does not factorise assigns no state at all to either part alone — only a reduced density operator, got by tracing the other part out, which is the object the Born rule then needs in order to return the right probabilities for that part alone.",
+      "description": "Joint states live in a tensor product, and most of them do not factorise: the pair has a definite state while neither member does. Not an exotic corner case — the generic case.\n\nDerivation: the state space of a composite system is $\\mathcal{H}_A\\otimes\\mathcal{H}_B$, strictly larger than the set of product vectors. A state such as $$|\\psi\\rangle=\\tfrac{1}{\\sqrt2}\\left(|{\\uparrow\\downarrow}\\rangle-|{\\downarrow\\uparrow}\\rangle\\right)$$ assigns no state at all to either part alone — only $\\rho_A=\\mathrm{tr}_B|\\psi\\rangle\\langle\\psi|$, the object the Born rule needs for measurements on $A$.",
       "requires": [
         "born-rule"
       ]
@@ -915,7 +915,7 @@
     {
       "id": "bell-theorem",
       "name": "Prove Bell’s theorem",
-      "description": "Any theory with local causes, pre-existing definite values, and experimenters free to choose their settings must obey an inequality that quantum mechanics and every careful experiment violate. The theorem is scrupulously silent about which of the three is at fault.\n\nDerivation: assume each outcome is a function of a shared variable and of the local setting only, and that the settings are chosen independently of that variable. Averaging over the variable bounds a particular combination of correlations by 2. The singlet state gives 2·sqrt(2), and experiment sides with the state.",
+      "description": "Any theory with local causes, pre-existing definite values, and experimenters free to choose their settings must obey an inequality that quantum mechanics and every careful experiment violate. The theorem is scrupulously silent about which of the three is at fault.\n\nDerivation: assume each outcome is a function of a shared $\\lambda$ and the local setting only, and that settings are chosen independently of $\\lambda$. Averaging over $\\lambda$ bounds a combination of correlations: $$|S|=|E(a,b)-E(a,b')+E(a',b)+E(a',b')|\\le 2$$ The singlet gives $2\\sqrt2$, and experiment sides with the state.",
       "requires": [
         "entanglement"
       ]
@@ -931,7 +931,7 @@
     {
       "id": "decoherence",
       "name": "Explain why the world looks classical",
-      "description": "Entanglement with an environment nobody is watching destroys interference between macroscopically different branches astonishingly fast, which is why superposition is invisible at human scale. It explains the absence of interference, not the occurrence of one outcome — the measurement problem walks straight through this.\n\nDerivation: let the system entangle with an environment of many degrees of freedom, then trace the environment out. The off-diagonal terms of the reduced density operator are suppressed by the overlap of the environment states, which for macroscopically separated branches collapses far faster than anything can be observed.",
+      "description": "Entanglement with an environment nobody is watching destroys interference between macroscopically different branches astonishingly fast, which is why superposition is invisible at human scale. It explains the absence of interference, not the occurrence of one outcome — the measurement problem walks straight through this.\n\nDerivation: let the system entangle with an environment of many degrees of freedom, then trace it out. The off-diagonal terms are suppressed by the overlap of the environment states, $$\\rho_{mn}(t)=\\rho_{mn}(0)\\,\\langle E_n(t)|E_m(t)\\rangle$$ which for macroscopically separated branches collapses far faster than anything can be observed.",
       "requires": [
         "entanglement"
       ]
@@ -939,7 +939,7 @@
     {
       "id": "quantum-statistics",
       "name": "Count with quantum statistics",
-      "description": "Bose-Einstein and Fermi-Dirac distributions follow from counting only the states that exchange symmetry permits. Degenerate matter, white dwarfs, superfluids, and the low-temperature heat capacities classical equipartition got so badly wrong.\n\nDerivation: redo the ensemble count over occupation numbers instead of labelled particles. Bosons permit any occupancy, so the sum is geometric and gives 1/(exp(x) - 1); fermions permit zero or one, so the sum has two terms and gives 1/(exp(x) + 1).",
+      "description": "Bose-Einstein and Fermi-Dirac distributions follow from counting only the states that exchange symmetry permits. Degenerate matter, white dwarfs, superfluids, and the low-temperature heat capacities classical equipartition got so badly wrong.\n\nDerivation: redo the ensemble count over occupation numbers instead of labelled particles. Bosons permit any occupancy, so the sum is geometric; fermions permit zero or one, so it has two terms: $$\\langle n\\rangle=\\frac{1}{e^{(\\varepsilon-\\mu)/kT}\\mp 1}$$ upper sign Bose, lower Fermi.",
       "requires": [
         "identical-particles"
       ]
@@ -947,7 +947,7 @@
     {
       "id": "blackbody-spectrum",
       "name": "Derive Planck’s law",
-      "description": "Treat the field’s modes as quantised oscillators and the ultraviolet catastrophe evaporates, because a high-frequency mode is simply too expensive to excite. The first crack in the classical picture, closed last, using nearly everything above it.\n\nDerivation: count the field modes in a cavity, give each the Bose occupation at energy hbar·omega, and multiply. The exponential cuts off every mode with hbar·omega well above kT, so the integral converges. The catastrophe was equipartition assuming each mode costs the same regardless of frequency.",
+      "description": "Treat the field’s modes as quantised oscillators and the ultraviolet catastrophe evaporates, because a high-frequency mode is simply too expensive to excite. The first crack in the classical picture, closed last, using nearly everything above it.\n\nDerivation: count the field modes in a cavity, give each the Bose occupation at $\\varepsilon=h\\nu$, and multiply: $$u(\\nu)=\\frac{8\\pi h\\nu^3}{c^3}\\frac{1}{e^{h\\nu/kT}-1}$$ The exponential cuts off every mode with $h\\nu\\gg kT$, so the integral converges. The catastrophe was equipartition assuming each mode costs the same regardless of frequency.",
       "requires": [
         "quantum-statistics"
       ]
@@ -955,7 +955,7 @@
     {
       "id": "third-law",
       "name": "State the third law",
-      "description": "Entropy tends to a constant as temperature tends to zero, because a quantum system has a ground state with a finite number of arrangements. Absolute zero becomes unreachable, and the entropy scale acquires an origin it never had classically.\n\nDerivation: as T falls the occupation collapses onto the ground state, so S tends to k·log g with g the ground-state degeneracy — a constant, independent of volume, pressure and everything else. Since each step towards it removes a smaller share of what is left, absolute zero takes infinitely many steps.",
+      "description": "Entropy tends to a constant as temperature tends to zero, because a quantum system has a ground state with a finite number of arrangements. Absolute zero becomes unreachable, and the entropy scale acquires an origin it never had classically.\n\nDerivation: as $T\\to0$ the occupation collapses onto the ground state, so $S\\to k\\ln g$ with $g$ its degeneracy — a constant, independent of volume and pressure. Since each step towards it removes a smaller share of what is left, absolute zero takes infinitely many steps.",
       "requires": [
         "quantum-statistics"
       ]
@@ -963,7 +963,7 @@
     {
       "id": "solid-state",
       "name": "Explain why solids conduct or do not",
-      "description": "Electrons in a periodic potential occupy bands separated by gaps, and Fermi-Dirac statistics decide which bands are filled. Metal, insulator and semiconductor are three answers to one question, and the transistor is the third answer put to work.\n\nDerivation: solve the Schrodinger equation in a periodic potential; Bloch’s theorem says the solutions are labelled by crystal momentum, with allowed energies falling into bands separated by gaps. Fermi-Dirac statistics then fill them up to the Fermi level: stopping inside a band gives a metal, stopping at a wide gap an insulator, at a narrow one a semiconductor.",
+      "description": "Electrons in a periodic potential occupy bands separated by gaps, and Fermi-Dirac statistics decide which bands are filled. Metal, insulator and semiconductor are three answers to one question, and the transistor is the third answer put to work.\n\nDerivation: solve the Schrödinger equation in a periodic potential; Bloch says the solutions are $\\psi_{nk}(x)=e^{ikx}u_{nk}(x)$, with allowed energies falling into bands separated by gaps. Fermi–Dirac statistics fill them to $E_F$: stopping inside a band gives a metal, at a wide gap an insulator, at a narrow one a semiconductor.",
       "requires": [
         "quantum-statistics",
         "schrodinger-equation"
@@ -972,7 +972,7 @@
     {
       "id": "relativistic-quantum-problem",
       "name": "See why one-particle quantum mechanics fails",
-      "description": "Put the Schrödinger picture together with relativity and you get negative energies, probabilities that refuse to stay positive, and localisation that outruns the light cone. Worse, mass-energy equivalence means particle number is not conserved, so a theory with a fixed number of particles was doomed from the first line.\n\nDerivation: make the Schrodinger equation Lorentz covariant and something breaks either way. Second order in time gives densities that go negative; first order gives energies unbounded below. And since E = mc^2 lets energy turn into particles, no equation for a fixed number of them can have been right.",
+      "description": "Put the Schrödinger picture together with relativity and you get negative energies, probabilities that refuse to stay positive, and localisation that outruns the light cone. Worse, mass-energy equivalence means particle number is not conserved, so a theory with a fixed number of particles was doomed from the first line.\n\nDerivation: make the Schrödinger equation Lorentz covariant and something breaks either way. Second order in time, $(\\Box+m^2)\\phi=0$, gives densities that go negative; first order gives $E=\\pm\\sqrt{p^2c^2+m^2c^4}$, unbounded below. And since $E=mc^2$ lets energy turn into particles, no equation for a fixed number of them can have been right.",
       "requires": [
         "schrodinger-equation",
         "mass-energy-equivalence"
@@ -981,7 +981,7 @@
     {
       "id": "quantum-fields",
       "name": "Quantise the field",
-      "description": "Treat the field rather than the particle as the thing with a Lagrangian, and quantise its modes as oscillators. Particles are the excitations — identical by construction, because they are excitations of one and the same field.\n\nDerivation: quantise the field rather than the particle. Its normal modes are harmonic oscillators, so their raising operators create quanta of definite momentum and the number of quanta becomes a dynamical variable rather than a fixed label. Exchange symmetry is then automatic: two quanta of one mode are one state.",
+      "description": "Treat the field rather than the particle as the thing with a Lagrangian, and quantise its modes as oscillators. Particles are the excitations — identical by construction, because they are excitations of one and the same field.\n\nDerivation: quantise the field rather than the particle. Its normal modes are harmonic oscillators, so $$\\phi(x)=\\int\\frac{d^3k}{(2\\pi)^3}\\frac{1}{\\sqrt{2\\omega_k}}\\left(a_k e^{ikx}+a_k^{\\dagger}e^{-ikx}\\right)$$ and the number of quanta becomes dynamical rather than a fixed label. Exchange symmetry is automatic: two quanta of one mode are one state.",
       "requires": [
         "relativistic-quantum-problem",
         "identical-particles"
@@ -990,7 +990,7 @@
     {
       "id": "particles-as-representations",
       "name": "Define a particle as a representation",
-      "description": "Wigner’s classification: an elementary particle is an irreducible unitary representation of the Poincaré group, labelled by exactly two numbers, mass and spin. The question \"what is a particle\" has a precise mathematical answer, and this is it.\n\nDerivation: the Poincare group acts unitarily on the state space a quantum field builds, and an elementary particle is a subspace of it with no invariant subspace of its own. Inducing from the subgroup that fixes a momentum, the only labels available are the invariant mass and a representation of that little group — SU(2) spin if massive, helicity if not.",
+      "description": "Wigner’s classification: an elementary particle is an irreducible unitary representation of the Poincaré group, labelled by exactly two numbers, mass and spin. The question \"what is a particle\" has a precise mathematical answer, and this is it.\n\nDerivation: the Poincaré group acts unitarily on the state space a quantum field builds, and an elementary particle is a subspace with no invariant subspace of its own. Inducing from the subgroup fixing a momentum, the only labels available are the two Casimirs: $$P^{\\mu}P_{\\mu}=m^2,\\qquad W^{\\mu}W_{\\mu}=-m^2s(s+1)$$ mass and spin, and nothing else.",
       "requires": [
         "quantum-fields",
         "spin"
@@ -999,7 +999,7 @@
     {
       "id": "spin-statistics",
       "name": "Prove the spin-statistics theorem",
-      "description": "Lorentz invariance, energies bounded below, and the demand that spacelike-separated measurements not interfere together force half-integer spin to be fermionic and integer spin bosonic. The Pauli exclusion principle — and with it the periodic table — is a theorem about causality.\n\nDerivation: require that fields at spacelike separation commute or anticommute, so neither measurement can disturb the other, and that the energy be bounded below. Taking the mass and spin labels of the previous step, integer-spin fields satisfy both conditions only with commutators, half-integer only with anticommutators. Anticommutators forbid two quanta in one state, which is the exclusion principle.",
+      "description": "Lorentz invariance, energies bounded below, and the demand that spacelike-separated measurements not interfere together force half-integer spin to be fermionic and integer spin bosonic. The Pauli exclusion principle — and with it the periodic table — is a theorem about causality.\n\nDerivation: require that fields at spacelike separation neither disturb the other, $[\\phi(x),\\phi(y)]=0$ for $(x-y)^2<0$, and that energy be bounded below. Taking the mass and spin labels of the previous step, integer spin satisfies both only with commutators, half-integer only with anticommutators. Anticommutators forbid two quanta in one state — the exclusion principle.",
       "requires": [
         "particles-as-representations"
       ]
@@ -1007,7 +1007,7 @@
     {
       "id": "antimatter-and-cpt",
       "name": "Derive antimatter and CPT",
-      "description": "The same construction that makes fields causal requires every particle to have an antiparticle of equal mass, and makes charge conjugation, parity and time reversal together an exact symmetry of any theory built this way. Each of the three is separately broken in nature; the product is not.\n\nDerivation: a field obeying the commutation relations the spin-statistics theorem just fixed must contain annihilation and creation operators together, and the second set creates states of equal mass and opposite charge — antiparticles. The same three ingredients, locality, Lorentz invariance and energy bounded below, make CPT an exact symmetry of any such theory.",
+      "description": "The same construction that makes fields causal requires every particle to have an antiparticle of equal mass, and makes charge conjugation, parity and time reversal together an exact symmetry of any theory built this way. Each of the three is separately broken in nature; the product is not.\n\nDerivation: a field obeying the commutation relations spin–statistics just fixed must contain annihilation and creation operators together, and the second set creates states of equal mass and opposite charge — antiparticles. The same three ingredients, locality, Lorentz invariance and $E$ bounded below, make $CPT$ an exact symmetry of any such theory.",
       "requires": [
         "spin-statistics"
       ]
@@ -1015,7 +1015,7 @@
     {
       "id": "gauge-theory-and-qed",
       "name": "Build quantum electrodynamics",
-      "description": "Quantise the electromagnetic field, couple it to charged matter by the same gauge principle as before, and the result predicts the electron’s magnetic moment to twelve significant figures. The most precisely tested theory there has ever been.\n\nDerivation: quantise the electromagnetic field and couple it to the electron field by the same minimal coupling as in the classical case, now demanded point by point. Expanding in the small coupling gives Feynman’s series, whose first correction to the electron’s magnetic moment is alpha/2pi.",
+      "description": "Quantise the electromagnetic field, couple it to charged matter by the same gauge principle as before, and the result predicts the electron’s magnetic moment to twelve significant figures. The most precisely tested theory there has ever been.\n\nDerivation: quantise the electromagnetic field and couple it to the electron field by the same minimal coupling, $\\partial_{\\mu}\\to\\partial_{\\mu}-ieA_{\\mu}$, now demanded point by point. Expanding in $\\alpha\\approx1/137$ gives Feynman's series, whose first correction to the electron's magnetic moment is $$a_e=\\frac{\\alpha}{2\\pi}\\approx 0.00116$$ confirmed to twelve figures.",
       "requires": [
         "quantum-fields"
       ]
@@ -1023,7 +1023,7 @@
     {
       "id": "renormalisation-and-eft",
       "name": "Renormalise, and read the result as an effective theory",
-      "description": "The infinities are an artefact of pretending the theory holds at every scale; absorb them into measured constants and what is left is finite and predictive. The modern reading is stronger still — every theory in this tree is an approximation good below some energy, and that is a feature rather than an apology.\n\nDerivation: cut the theory off at short distance, then absorb the cutoff-dependent parts into the bare mass and charge; predictions depend only on the measured values. The renormalisation group explains why this works: those parts are irrelevant directions in coupling space, so at low energy only the few terms kept survive.",
+      "description": "The infinities are an artefact of pretending the theory holds at every scale; absorb them into measured constants and what is left is finite and predictive. The modern reading is stronger still — every theory in this tree is an approximation good below some energy, and that is a feature rather than an apology.\n\nDerivation: cut the theory off at short distance, then absorb the cutoff-dependent parts into the bare mass and charge; predictions depend only on measured values, with the residue running as $\\alpha(\\mu)$. The renormalisation group explains why this works: those parts are irrelevant directions in coupling space, so at low energy only the few terms kept survive.",
       "requires": [
         "gauge-theory-and-qed",
         "renormalisation-group"
@@ -1032,7 +1032,7 @@
     {
       "id": "standard-model",
       "name": "Assemble the Standard Model",
-      "description": "Three gauge symmetries, three generations, a mechanism for giving mass without spoiling gauge invariance, and about twenty numbers nobody can derive from anything. It accounts for every laboratory measurement ever made, which is simultaneously its triumph and the reason it is so frustrating.\n\nDerivation: choose the gauge group SU(3) x SU(2) x U(1), assign the matter fields — fermionic, by the spin-statistics theorem — to representations of it, and write down every renormalisable term the symmetry permits. Giving the weak bosons mass without spoiling gauge invariance forces a scalar whose vacuum breaks the symmetry. What is left is about twenty measured numbers.",
+      "description": "Three gauge symmetries, three generations, a mechanism for giving mass without spoiling gauge invariance, and about twenty numbers nobody can derive from anything. It accounts for every laboratory measurement ever made, which is simultaneously its triumph and the reason it is so frustrating.\n\nDerivation: choose the gauge group $SU(3)\\times SU(2)\\times U(1)$, assign the matter fields — fermionic, by spin–statistics — to representations of it, and write down every renormalisable term the symmetry permits. Giving the weak bosons mass without spoiling gauge invariance forces a scalar whose vacuum breaks the symmetry. What is left is about twenty measured numbers.",
       "requires": [
         "renormalisation-and-eft",
         "spin-statistics"
@@ -1041,7 +1041,7 @@
     {
       "id": "quantum-gravity",
       "name": "See why gravity and quantum theory will not combine",
-      "description": "Treat the metric as one more quantum field and the theory is non-renormalisable: every order of correction needs a new constant, and predictive power runs out. Both parent theories are confirmed to absurd precision, and they cannot both be right as written.\n\nDerivation: write the metric as flat plus h and quantise h like any other field. The coupling carries dimensions of inverse mass squared, so each order of perturbation demands a new counterterm and no finite set of parameters ever suffices. Below the Planck scale it works as an effective theory; as a fundamental one it says nothing.",
+      "description": "Treat the metric as one more quantum field and the theory is non-renormalisable: every order of correction needs a new constant, and predictive power runs out. Both parent theories are confirmed to absurd precision, and they cannot both be right as written.\n\nDerivation: write $g_{\\mu\\nu}=\\eta_{\\mu\\nu}+h_{\\mu\\nu}$ and quantise $h$ like any other field. The coupling is $\\sqrt{G}$, of dimension $1/\\text{mass}$, so each order of perturbation demands a new counterterm and no finite set of parameters suffices. Below $M_P=\\sqrt{\\hbar c/G}\\approx10^{19}$ GeV it works as an effective theory; as a fundamental one it says nothing.",
       "requires": [
         "einstein-field-equations",
         "renormalisation-and-eft"
@@ -1050,7 +1050,7 @@
     {
       "id": "open-questions",
       "name": "Find where the axioms run out",
-      "description": "The statistical postulate, the early universe’s low entropy, and the occurrence of a single measurement outcome are still assumptions rather than results; gravity and quantum theory have no shared formulation; and most of what the universe contains is named rather than understood. Every one of these is a missing axiom, or a surplus one that nobody has managed to remove.\n\nDerivation: collect what each of the six leaves unfinished. The Standard Model derives none of its twenty-odd parameters and gives no reason for there being three generations. Quantum gravity has no ultraviolet completion. Cosmology names most of its contents rather than explaining them, and needs the low-entropy beginning the arrow of time cannot supply. Decoherence accounts for the absence of interference but not for the occurrence of one outcome. And Bell leaves an assumption to be picked rather than derived.",
+      "description": "The statistical postulate, the early universe’s low entropy, and the occurrence of a single measurement outcome are still assumptions rather than results; gravity and quantum theory have no shared formulation; and most of what the universe contains is named rather than understood. Every one of these is a missing axiom, or a surplus one that nobody has managed to remove.\n\nDerivation: collect what each of the six leaves unfinished. The Standard Model derives none of its twenty-odd parameters and gives no reason for three generations. Quantum gravity has no ultraviolet completion. Cosmology names most of its contents rather than explaining them, and needs the low-entropy beginning the arrow of time cannot supply. Decoherence accounts for the absence of interference but not for the occurrence of one outcome. And Bell leaves an assumption to be picked rather than derived.",
       "requires": [
         "standard-model",
         "quantum-gravity",

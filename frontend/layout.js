@@ -14,9 +14,15 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   const NODE_W = 170;
-  const NODE_H = 56;
+  // Tall enough for three wrapped lines of the skill name plus the count
+  // line underneath. Names used to be cut at 22 characters, which on a real
+  // tree meant almost every node showed an ellipsis instead of what it was —
+  // 105 of the 127 in the physics example. Three lines at this width hold
+  // about 60 characters, which covers every name anyone has written here.
+  const NODE_H = 84;
   const SPACING_X = 220;
-  const SPACING_Y = 90;
+  // Kept at NODE_H plus the 34px gap the layout has always left between rows.
+  const SPACING_Y = 118;
   const ORDER_PASSES = 8;
   // Pair comparisons the crossing-minimisation may spend on one graph.
   //

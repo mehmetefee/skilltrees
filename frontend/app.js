@@ -194,6 +194,164 @@ function edgePath(points) {
   return SkillTreeLayout.edgeCurve(points);
 }
 
+// ---------- node labels ----------
+
+// Greedy wrap of a skill name to the node box, shared by all three renderers
+// so a node looks the same wherever it is drawn. Width is measured rather
+// than guessed from a character count: the labels are semibold Inter, where
+// "Work in an infinite-dimensional inner-product space" and fifty copies of
+// "i" are nowhere near the same width.
+//
+// Measurement goes through a 2d canvas context, which needs no layout pass
+// and so costs nothing per frame during a drag. If the canvas is unavailable
+// the estimate falls back to an average advance width, which wraps a little
+// early or late but never throws.
+const LABEL_FONT = '600 13px Inter, system-ui, sans-serif';
+const LABEL_LINE_H = 15;
+const LABEL_PAD_X = 12;
+const LABEL_MAX_LINES = 3;
+
+let labelMeasureCtx;
+function measureLabel(text) {
+  if (labelMeasureCtx === undefined) {
+    try {
+      labelMeasureCtx = document.createElement('canvas').getContext('2d');
+      if (labelMeasureCtx) labelMeasureCtx.font = LABEL_FONT;
+    } catch (e) {
+      labelMeasureCtx = null;
+    }
+  }
+  if (!labelMeasureCtx) return text.length * 7; // rough average advance
+  return labelMeasureCtx.measureText(text).width;
+}
+
+// Returns the lines to draw. A name too long for LABEL_MAX_LINES is cut on
+// the last one — names can be 120 characters by the format's limits, and a
+// node box is not the place to read one of those in full.
+function wrapNodeLabel(name, maxWidth) {
+  const limit = maxWidth - LABEL_PAD_X * 2;
+  const words = String(name == null ? '' : name).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+
+  for (const word of words) {
+    const candidate = line ? line + ' ' + word : word;
+    if (!line || measureLabel(candidate) <= limit) {
+      line = candidate;
+      continue;
+    }
+    lines.push(line);
+    line = word;
+    if (lines.length === LABEL_MAX_LINES) break;
+  }
+  if (line && lines.length < LABEL_MAX_LINES) lines.push(line);
+  if (!lines.length) return [''];
+
+  // Anything left over, or a single word wider than the box, gets an ellipsis
+  // on the last line rather than spilling past the edge.
+  const used = lines.join(' ');
+  const overflowed = used.length < String(name).replace(/\s+/g, ' ').trim().length;
+  let last = lines[lines.length - 1];
+  if (overflowed || measureLabel(last) > limit) {
+    while (last.length > 1 && measureLabel(last + '…') > limit) last = last.slice(0, -1);
+    lines[lines.length - 1] = last + '…';
+  }
+  return lines;
+}
+
+// Draws the wrapped name and the count line into a node group. The name block
+// is centred in the space above the count line, so a one-line node and a
+// three-line node look deliberate rather than top-aligned with a hole.
+function appendNodeLabel(g, name, subText) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const { NODE_W, NODE_H } = SkillTreeLayout;
+  const lines = wrapNodeLabel(name, NODE_W);
+  const subBaseline = NODE_H - 12;
+  // The hero draws no count line, so there the name has the whole box.
+  const room = subText == null ? NODE_H : subBaseline - LABEL_LINE_H;
+  const firstBaseline = Math.round((room - lines.length * LABEL_LINE_H) / 2) + LABEL_LINE_H;
+
+  const label = document.createElementNS(ns, 'text');
+  label.setAttribute('class', 'node-label');
+  label.setAttribute('x', LABEL_PAD_X);
+  label.setAttribute('y', firstBaseline);
+  lines.forEach((line, i) => {
+    const span = document.createElementNS(ns, 'tspan');
+    span.setAttribute('x', LABEL_PAD_X);
+    if (i > 0) span.setAttribute('dy', LABEL_LINE_H);
+    span.textContent = line;
+    label.appendChild(span);
+  });
+  g.appendChild(label);
+
+  if (subText == null) return;
+  const sub = document.createElementNS(ns, 'text');
+  sub.setAttribute('class', 'node-sublabel');
+  sub.setAttribute('x', LABEL_PAD_X);
+  sub.setAttribute('y', subBaseline);
+  sub.textContent = subText;
+  g.appendChild(sub);
+}
+
+// ---------- descriptions, with maths ----------
+
+// Skill descriptions may carry TeX between $…$ (inline) or $$…$$ (its own
+// line); see FORMAT.md. Everything outside those delimiters is inserted as a
+// text node and never parsed, which is the part that matters: descriptions
+// arrive from imported JSON that anyone with an account can upload, so the
+// only markup that can reach the DOM here is what KaTeX itself builds.
+// KaTeX is loaded with trust off and strict silenced, so it emits no links,
+// no raw HTML and no \\url — and a page that did not load it at all still
+// gets readable text, just with the dollar signs showing.
+//
+// The blank line between a description and its derivation becomes a real
+// paragraph here, which is what it could never be while this was assigned
+// through textContent into a single <p>.
+function renderDescription(el, text) {
+  el.textContent = '';
+  const source = String(text == null ? '' : text);
+  if (!source.trim()) {
+    el.textContent = 'No description.';
+    return;
+  }
+
+  for (const para of source.split(/\n{2,}/)) {
+    const p = document.createElement('p');
+    p.className = 'desc-para';
+    // Alternating split: even indices are literal text, odd are the maths
+    // between the delimiters, with the $$ case checked first so it is not
+    // mistaken for two empty inline spans.
+    for (const piece of para.split(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g)) {
+      if (!piece) continue;
+      const display = piece.startsWith('$$') && piece.endsWith('$$') && piece.length > 4;
+      const inline = !display && piece.startsWith('$') && piece.endsWith('$') && piece.length > 2;
+      if (!display && !inline) {
+        p.appendChild(document.createTextNode(piece));
+        continue;
+      }
+      const body = piece.slice(display ? 2 : 1, display ? -2 : -1);
+      const span = document.createElement('span');
+      if (typeof katex === 'undefined') {
+        span.textContent = piece; // no renderer: show the source, unparsed
+      } else {
+        try {
+          katex.render(body, span, {
+            displayMode: display,
+            throwOnError: false,
+            trust: false,
+            strict: 'ignore',
+            output: 'html',
+          });
+        } catch (e) {
+          span.textContent = piece;
+        }
+      }
+      p.appendChild(span);
+    }
+    el.appendChild(p);
+  }
+}
+
 // Color palette for separate prerequisite paths
 const PREREQ_PATH_COLORS = [
   '#2563eb', // Path 0: Royal Blue
@@ -919,12 +1077,8 @@ function renderFeatured() {
     rect.setAttribute('class', cls);
     g.appendChild(rect);
 
-    const label = document.createElementNS(ns, 'text');
-    label.setAttribute('x', 12);
-    label.setAttribute('y', NODE_H / 2 + 5);
-    label.setAttribute('class', 'node-label');
-    label.textContent = skill.name.length > 20 ? skill.name.slice(0, 19) + '…' : skill.name;
-    g.appendChild(label);
+    // The hero has no count line, so the wrapped name gets the whole box.
+    appendNodeLabel(g, skill.name, null);
 
     g.addEventListener('mouseenter', () => {
       highlightGraphPath(skill.id, featuredTree, svg);

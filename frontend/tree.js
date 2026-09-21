@@ -3,8 +3,11 @@
 // prerequisites, reposition nodes, and delete things. Anyone can read a tree;
 // only the account that made it can change it, which the server enforces.
 
-const NODE_W = 170;
-const NODE_H = 56;
+// One definition, in layout.js, because the layout and the drawing have to
+// agree on how big a node is: the lane pass and the detour routing both
+// measure clearance against these, so a second copy here that drifted would
+// promise room the renderer does not actually leave.
+const { NODE_W, NODE_H } = SkillTreeLayout;
 
 const params = new URLSearchParams(window.location.search);
 // No id means a brand new tree. Nothing is saved until there's something worth
@@ -473,21 +476,13 @@ function render() {
     rect.setAttribute('class', cls);
     g.appendChild(rect);
 
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', 12);
-    label.setAttribute('y', 24);
-    label.setAttribute('class', 'node-label');
-    label.textContent = truncate(skill.name, 22);
-    g.appendChild(label);
-
     const nPrereq = prereqsOf(skill.id).length;
     const nUnlock = unlocksOf(skill.id).length;
-    const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    sub.setAttribute('x', 12);
-    sub.setAttribute('y', 42);
-    sub.setAttribute('class', 'node-sublabel');
-    sub.textContent = nPrereq === 0 ? '✦ Start here' : `Needs ${nPrereq} · Unlocks ${nUnlock}`;
-    g.appendChild(sub);
+    appendNodeLabel(
+      g,
+      skill.name,
+      nPrereq === 0 ? '✦ Start here' : `Needs ${nPrereq} · Unlocks ${nUnlock}`
+    );
 
     attachNodeInteractions(g, skill);
     nodesLayer.appendChild(g);
@@ -1161,7 +1156,7 @@ function panToSkill(skill) {
 function openSidePanel(skill) {
   highlightGraphPath(skill.id, tree, svg);
   document.getElementById('panel-name').textContent = skill.name;
-  document.getElementById('panel-desc').textContent = skill.description || 'No description.';
+  renderDescription(document.getElementById('panel-desc'), skill.description);
 
   const prereqList = document.getElementById('panel-prereqs');
   prereqList.innerHTML = '';

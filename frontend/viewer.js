@@ -1,7 +1,7 @@
 // Skill Tree Viewer: view unpublished trees locally in full-screen mode.
 
-const NODE_W = 170;
-const NODE_H = 56;
+// Shared with the layout — see the note in tree.js.
+const { NODE_W, NODE_H } = SkillTreeLayout;
 
 const svg = document.getElementById('viewer-svg');
 const edgesLayer = document.getElementById('edges-layer');
@@ -341,21 +341,13 @@ function render() {
     rect.setAttribute('class', cls);
     g.appendChild(rect);
 
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', 12);
-    label.setAttribute('y', 24);
-    label.setAttribute('class', 'node-label');
-    label.textContent = skill.name.length > 22 ? skill.name.slice(0, 21) + '…' : skill.name;
-    g.appendChild(label);
-
     const nPrereq = currentTree.edges.filter((e) => e.to === skill.id).length;
     const nUnlock = currentTree.edges.filter((e) => e.from === skill.id).length;
-    const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    sub.setAttribute('x', 12);
-    sub.setAttribute('y', 42);
-    sub.setAttribute('class', 'node-sublabel');
-    sub.textContent = nPrereq === 0 ? '✦ Start here' : `Needs ${nPrereq} · Unlocks ${nUnlock}`;
-    g.appendChild(sub);
+    appendNodeLabel(
+      g,
+      skill.name,
+      nPrereq === 0 ? '✦ Start here' : `Needs ${nPrereq} · Unlocks ${nUnlock}`
+    );
 
     attachNodeInteractions(g, skill, p);
     nodesLayer.appendChild(g);
@@ -573,7 +565,7 @@ function setupSidePanel() {
 function openSidePanel(skill) {
   highlightGraphPath(skill.id, currentTree, svg);
   document.getElementById('panel-name').textContent = skill.name;
-  document.getElementById('panel-desc').textContent = skill.description || 'No description.';
+  renderDescription(document.getElementById('panel-desc'), skill.description);
 
   const prereqList = document.getElementById('panel-prereqs');
   prereqList.innerHTML = '';
