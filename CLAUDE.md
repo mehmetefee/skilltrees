@@ -235,14 +235,19 @@ arrangement is to export the tree with `layout: "manual"`, which sends the
 browser's current positions with the request. The original reason was that
 without accounts anyone could rearrange anyone's tree — accounts now exist, so
 saving an owner's layout is possible and simply hasn't been built. See TODO.md.
+*Caveat:* the code disagrees for owners — `attachNodeInteractions()` PATCHes
+the new position when the owner drops a skill on a manual-layout tree. Which
+of the two is intended is an open decision (see "Open questions"); a
+visitor's or another account's drag never saves either way.
 
 **`anyOf` is valid in the format but rejected on import.** The database can't
 represent alternative prerequisites, and silently flattening them to a plain
 AND list would change what a tree means. Reject loudly instead.
 
 **The featured tree has no API endpoint, on purpose.** `trees.featured` is a
-plain column, but there's no route that sets it — with no accounts, any public
-endpoint for it could be flipped by anyone. It's set with `node db/feature.js
+plain column, but there's no route that sets it — accounts exist, but there
+is no administrator role, so any endpoint for it would be one every account
+could flip. It's set with `node db/feature.js
 <id|title|--clear>`, run on the machine hosting the database. The homepage
 (`GET /api/trees`, which includes `featured`) only ever reads it.
 
@@ -913,7 +918,8 @@ list is the head of the published lists rather than a full breach corpus;
 caller-supplied — running behind a proxy needs that handled properly; signup
 reveals whether a username is taken, which it has to in order to be usable;
 there is no password reset — it needs a channel to the person, such as
-email, which the site doesn't have — and no second factor; the ten-minute
+email, which the site doesn't have — and no second factor on top of a
+password (a passkey replaces the password rather than adding to it); the ten-minute
 window is all that protects an account without a password, so a cookie
 stolen within ten minutes of a sign-in could set a password the owner can't
 then change without knowing it (they can still sign in through the
@@ -1045,8 +1051,11 @@ have missed both.
 
 ## Open questions
 
-See `TODO.md`. In short: accounts and progress tracking are deferred;
-prerequisite combining (any-of, thresholds) is unsettled; creator-owned saved
-layouts are blocked on accounts. Link types (required vs recommended) were
+See `TODO.md`. In short: progress tracking is deferred; prerequisite
+combining (any-of, thresholds) is unsettled; and creator-owned saved layouts
+are undecided — `attachNodeInteractions()` in `tree.js` already PATCHes an
+owner's drag on a manual-layout tree, which "Dragging a skill never saves"
+above says it shouldn't. Until that's settled the browser suites skip the
+owner case and assert only what holds either way. Link types (required vs recommended) were
 considered and deliberately rejected — the reasoning is recorded there, so
 don't re-add them without reading it.
