@@ -9,18 +9,23 @@
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="tree-fullscreen-wrap" id="graph-wrap">
+  <a class="skip-link" href="#graph-svg">Skip to the skill graph</a>
+
+  <main class="tree-fullscreen-wrap" id="graph-wrap">
     <!-- Top-left info overlay -->
     <div class="tree-overlay-topleft">
-      <a class="back-link" href="/#browse">&larr; All trees</a>
-      <input id="tree-title" class="inline-title" type="text" maxlength="120"
-        placeholder="Untitled skill tree" autocomplete="off" />
-      <textarea id="tree-desc" class="inline-desc" maxlength="1000" rows="1"
+      <a class="back-link" href="/#browse"><span aria-hidden="true">&larr;</span> All trees</a>
+      <!-- The title below is an editable field, which isn't a heading, so the
+           page's heading mirrors it for anyone navigating by headings. -->
+      <h1 class="visually-hidden" id="tree-heading">Skill tree</h1>
+      <input id="tree-title" class="inline-title" type="text" maxlength="120" aria-label="Tree title"
+        placeholder="Untitled skill tree" autocomplete="off" enterkeyhint="done" />
+      <textarea id="tree-desc" class="inline-desc" maxlength="1000" rows="1" aria-label="Tree description"
         placeholder="Add a description&hellip;"></textarea>
       <p class="meta">
         <span id="tree-meta-count"></span>
-        by <input id="tree-author" class="inline-author" type="text" maxlength="80"
-          placeholder="Anonymous" autocomplete="off" />
+        by <input id="tree-author" class="inline-author" type="text" maxlength="80" aria-label="Author"
+          placeholder="Anonymous" autocomplete="off" spellcheck="false" enterkeyhint="done" />
         <span id="tree-meta-time"></span>
         <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
       </p>
@@ -28,10 +33,11 @@
     </div>
 
     <!-- Top-right toolbar & controls -->
-    <div class="tree-overlay-topright">
-      <button class="btn" id="add-skill-btn">+ Add skill</button>
+    <div class="tree-overlay-topright" role="group" aria-label="Tree actions">
+      <button class="btn" id="add-skill-btn" aria-haspopup="dialog"><span aria-hidden="true">+</span> Add skill</button>
       <button class="btn" id="link-mode-btn">Link prerequisite</button>
-      <button class="btn" id="export-btn" title="Download this tree as a JSON file">Export</button>
+      <button class="btn" id="export-btn" title="Download this tree as a JSON file" aria-haspopup="dialog">Export</button>
+      <button class="btn" id="share-btn" title="Share a link to this tree" hidden>Share</button>
       <button class="btn btn-danger" id="delete-tree-btn">Delete tree</button>
       <span class="auth-slot"></span>
     </div>
@@ -43,8 +49,10 @@
       <button class="btn btn-small" id="zoom-fit-btn" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
     </div>
 
-    <!-- Graph SVG -->
-    <svg id="graph-svg" width="100%" height="100%">
+    <!-- Graph SVG. The canvas is a tab stop of its own (arrows pan it); the
+         skills inside are one more (see createGraphKeyboard in a11y.js). -->
+    <svg id="graph-svg" width="100%" height="100%" tabindex="0" role="group"
+      aria-label="Skill graph" aria-describedby="graph-help">
       <defs>
         <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
           <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--locked)"></polygon>
@@ -53,99 +61,110 @@
           <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--accent)"></polygon>
         </marker>
         <marker id="arrowhead-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="#10b981"></polygon>
+          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--unlocks)"></polygon>
         </marker>
       </defs>
       <g id="edges-layer"></g>
       <g id="nodes-layer"></g>
     </svg>
+    <p class="visually-hidden" id="graph-help">
+      Arrow keys pan the graph, plus and minus zoom, 0 fits it to the screen.
+      Press Tab to reach the skills: on a skill, left and right arrows follow its
+      prerequisites and what it unlocks, up and down step through the skills
+      column by column, Enter or Space opens its details, and Escape closes them.
+    </p>
+    <div class="graph-kbd-hint" aria-hidden="true">
+      <span class="kbd-canvas"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> pan
+        &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom &middot; <kbd>0</kbd> fit &middot; <kbd>Tab</kbd> to the skills</span>
+      <span class="kbd-node"><kbd>&larr;</kbd><kbd>&rarr;</kbd> follow links &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> next skill
+        &middot; <kbd>Enter</kbd> details &middot; <kbd>Esc</kbd> close &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom</span>
+    </div>
 
     <!-- Bottom legend -->
     <div class="legend">
-      <span><span class="swatch locked"></span>Has prerequisites</span>
-      <span><span class="swatch unlocked"></span>Start here (no prerequisites)</span>
+      <span><span class="swatch locked" aria-hidden="true"></span>Has prerequisites</span>
+      <span><span class="swatch unlocked" aria-hidden="true"></span>Start here (no prerequisites)</span>
     </div>
 
-  </div>
+  </main>
 
-  <!-- Side panel: skill details -->
-  <div class="side-panel" id="side-panel">
+  <!-- Side panel: skill details. Not a modal: the graph stays usable beside
+       it, so it's a labelled landmark that focus moves into, not a dialog. -->
+  <aside class="side-panel" id="side-panel" aria-labelledby="panel-name">
     <button class="close-btn" id="panel-close" aria-label="Close details panel">&times;</button>
-    <h2 id="panel-name"></h2>
+    <h2 id="panel-name" tabindex="-1"></h2>
     <p id="panel-desc" style="color: var(--text-muted); font-size: 14px;"></p>
 
     <div class="panel-section">
-      <h3>Requires</h3>
-      <ul class="prereq-list" id="panel-prereqs"></ul>
+      <h3 id="panel-prereqs-heading">Requires</h3>
+      <ul class="prereq-list" id="panel-prereqs" aria-labelledby="panel-prereqs-heading"></ul>
     </div>
     <div class="panel-section">
-      <h3>Unlocks</h3>
-      <ul class="unlock-list" id="panel-unlocks"></ul>
+      <h3 id="panel-unlocks-heading">Unlocks</h3>
+      <ul class="unlock-list" id="panel-unlocks" aria-labelledby="panel-unlocks-heading"></ul>
     </div>
     <div class="panel-section">
       <button class="btn btn-danger btn-small" id="panel-delete-btn">Delete this skill</button>
     </div>
-  </div>
+  </aside>
 
-  <!-- Export modal -->
-  <div class="modal-overlay" id="export-overlay" hidden>
-    <div class="modal">
-      <h2>Export this tree</h2>
-      <p class="modal-subtitle">
-        How should the file describe the layout?
-      </p>
-      <form id="export-form">
-        <label class="choice">
-          <input type="radio" name="export-layout" value="manual" checked />
-          <span>
-            <strong>Keep this arrangement</strong>
-            <em>Saves where the skills currently sit, including anything you've
-            dragged. Anyone importing the file sees exactly this layout.</em>
-          </span>
-        </label>
-        <label class="choice">
-          <input type="radio" name="export-layout" value="auto" />
-          <span>
-            <strong>Arrange automatically</strong>
-            <em>Saves no positions at all. The tree is laid out from its
-            structure wherever it's opened, and stays tidy as it's edited.</em>
-          </span>
-        </label>
-        <div class="modal-actions">
-          <button type="button" class="btn" id="export-cancel-btn">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="export-submit-btn">Export</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <!-- Export dialog -->
+  <dialog class="modal" id="export-overlay" aria-labelledby="export-title" aria-describedby="export-help" closedby="any">
+    <h2 id="export-title">Export this tree</h2>
+    <p class="modal-subtitle" id="export-help">
+      How should the file describe the layout?
+    </p>
+    <form id="export-form">
+      <label class="choice">
+        <input type="radio" name="export-layout" value="manual" checked />
+        <span>
+          <strong>Keep this arrangement</strong>
+          <em>Saves where the skills currently sit, including anything you've
+          dragged. Anyone importing the file sees exactly this layout.</em>
+        </span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="export-layout" value="auto" />
+        <span>
+          <strong>Arrange automatically</strong>
+          <em>Saves no positions at all. The tree is laid out from its
+          structure wherever it's opened, and stays tidy as it's edited.</em>
+        </span>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="export-cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="export-submit-btn">Export</button>
+      </div>
+    </form>
+  </dialog>
 
-  <!-- New skill modal -->
-  <div class="modal-overlay" id="skill-modal-overlay" hidden>
-    <div class="modal">
-      <h2>Add a skill</h2>
-      <p class="modal-subtitle">
-        Define a new skill node to add to this tree.
-      </p>
-      <form id="new-skill-form">
-        <div class="field">
-          <label for="skill-name">Skill name</label>
-          <input id="skill-name" type="text" maxlength="120" required placeholder="e.g. Knead dough" />
-        </div>
-        <div class="field">
-          <label for="skill-desc">Description (optional)</label>
-          <textarea id="skill-desc" maxlength="1000" placeholder="What does learning this involve?"></textarea>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn" id="skill-cancel-btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Add skill</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <!-- New skill dialog -->
+  <dialog class="modal" id="skill-modal-overlay" aria-labelledby="skill-modal-title" aria-describedby="skill-modal-help" closedby="any">
+    <h2 id="skill-modal-title">Add a skill</h2>
+    <p class="modal-subtitle" id="skill-modal-help">
+      Define a new skill node to add to this tree.
+    </p>
+    <form id="new-skill-form">
+      <div class="field">
+        <label for="skill-name">Skill name</label>
+        <input id="skill-name" type="text" maxlength="120" required placeholder="e.g. Knead dough"
+          autocomplete="off" enterkeyhint="done" autofocus />
+      </div>
+      <div class="field">
+        <label for="skill-desc">Description (optional)</label>
+        <textarea id="skill-desc" maxlength="1000" placeholder="What does learning this involve?"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="skill-cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add skill</button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="/layout.js"></script>
+  <script src="/a11y.js"></script>
   <script src="/app.js"></script>
   <script src="/tree.js"></script>
 </body>

@@ -9,80 +9,109 @@
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
   <!-- Persistent top-right actions (always visible across featured hero and browse) -->
   <header class="site-header-actions" id="site-actions">
-    <button class="btn" data-open="import">Import</button>
-    <a class="btn btn-primary" href="/tree.html">+ New skill tree</a>
+    <button class="btn" data-open="import" aria-haspopup="dialog">Import</button>
+    <a class="btn btn-primary" href="/tree.html"><span aria-hidden="true">+</span> New skill tree</a>
     <span class="auth-slot"></span>
   </header>
 
-  <div id="featured-hero" class="featured-hero" hidden>
-    <div id="featured" style="position: absolute; top: 0; left: 0;"></div>
-    <div class="zoom-controls" role="group" aria-label="Zoom controls">
-      <button class="btn btn-small" id="featured-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-      <button class="btn btn-small" id="featured-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
-      <button class="btn btn-small" id="featured-zoom-fit" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
-    </div>
-    <svg id="featured-svg" preserveAspectRatio="xMidYMid meet"></svg>
-    <div class="featured-hero-overlay">
-      <h2 id="featured-title"></h2>
-      <p id="featured-desc"></p>
-      <div class="meta" id="featured-meta"></div>
-      <a class="btn btn-primary" id="featured-link" href="#">Open this tree</a>
-    </div>
-    <a href="#browse" class="featured-scroll-hint" id="scroll-hint-btn">Browse all trees &darr;</a>
-  </div>
+  <main id="main" tabindex="-1">
+    <!-- The page's own title. The featured tree's name is the first heading
+         on screen, but it names a section, not the page. -->
+    <h1 class="visually-hidden">Skill Trees</h1>
 
-  <div class="container">
-    <div class="page-header" id="browse">
-      <div>
-        <h1>Browse public skill trees</h1>
-        <p>Explore how skills unlock other skills, or start your own tree for any craft, subject, or hobby.</p>
+    <section id="featured-hero" class="featured-hero" aria-label="Featured skill tree" hidden>
+      <div id="featured" style="position: absolute; top: 0; left: 0;"></div>
+      <!-- DOM order is focus order: the tree's name and link first, as they
+           read on screen, then the graph, then the controls around it. -->
+      <div class="featured-hero-overlay">
+        <h2 id="featured-title"></h2>
+        <p id="featured-desc"></p>
+        <div class="meta" id="featured-meta"></div>
+        <a class="btn btn-primary" id="featured-link" href="#">Open this tree</a>
+      </div>
+      <svg id="featured-svg" preserveAspectRatio="xMidYMid meet" tabindex="0" role="group"
+        aria-label="Featured tree graph" aria-describedby="featured-graph-help"></svg>
+      <p class="visually-hidden" id="featured-graph-help">
+        Arrow keys pan the graph, plus and minus zoom, 0 fits it to the screen.
+        Press Tab to reach the skills: on a skill, left and right arrows follow its
+        prerequisites and what it unlocks, up and down step through the skills
+        column by column, and Enter opens the tree.
+      </p>
+      <div class="graph-kbd-hint" aria-hidden="true">
+        <span class="kbd-canvas"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> pan
+          &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom &middot; <kbd>0</kbd> fit &middot; <kbd>Tab</kbd> to the skills</span>
+        <span class="kbd-node"><kbd>&larr;</kbd><kbd>&rarr;</kbd> follow links &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> next skill
+          &middot; <kbd>Enter</kbd> open tree &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom</span>
+      </div>
+      <div class="zoom-controls" role="group" aria-label="Zoom controls">
+        <button class="btn btn-small" id="featured-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+        <button class="btn btn-small" id="featured-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+        <button class="btn btn-small" id="featured-zoom-fit" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
+      </div>
+      <a href="#browse" class="featured-scroll-hint" id="scroll-hint-btn">Browse all trees <span aria-hidden="true">&darr;</span></a>
+    </section>
+
+    <div class="container">
+      <div class="page-header" id="browse">
+        <div>
+          <h2 class="page-title">Browse public skill trees</h2>
+          <p>Explore how skills unlock other skills, or start your own tree for any craft, subject, or hobby.</p>
+        </div>
+      </div>
+
+      <!-- An ARIA 1.2 combobox: focus stays in the field, and the highlighted
+           result is pointed at with aria-activedescendant. -->
+      <search class="search-wrap">
+        <label for="tree-search" class="visually-hidden">Search skill trees</label>
+        <input type="text" id="tree-search" class="search-input" placeholder="Search skill trees by name..."
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-dropdown"
+          autocomplete="off" spellcheck="false" inputmode="search" enterkeyhint="go" />
+        <div id="search-dropdown" class="search-dropdown" role="listbox" aria-label="Matching skill trees" hidden></div>
+        <div id="search-status" class="visually-hidden" role="status" aria-live="polite"></div>
+      </search>
+
+      <div id="tree-grid" class="tree-grid"></div>
+      <div id="empty-state" class="empty-state" hidden>
+        <p>No skill trees yet. Be the first to create one!</p>
       </div>
     </div>
+  </main>
 
-    <div class="search-wrap">
-      <input type="text" id="tree-search" class="search-input" placeholder="Search skill trees by name..." autocomplete="off" />
-      <div id="search-dropdown" class="search-dropdown" hidden></div>
-    </div>
-
-    <div id="tree-grid" class="tree-grid"></div>
-    <div id="empty-state" class="empty-state" hidden>
-      <p>No skill trees yet. Be the first to create one!</p>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="import-overlay" hidden>
-    <div class="modal">
-      <h2>Import a skill tree</h2>
-      <p class="modal-subtitle">
-        Paste a skill tree JSON file, or choose one from your computer.
-        The format is described in <code>FORMAT.md</code>.
-      </p>
-      <form id="import-form">
-        <div class="field">
-          <label for="import-file">From a file</label>
-          <input id="import-file" type="file" accept=".json,application/json" />
-        </div>
-        <div class="field">
-          <label for="import-text">Or paste it here</label>
-          <textarea id="import-text" rows="10" spellcheck="false"
-            style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"
-            placeholder='{&#10;  "format": "skilltree",&#10;  "version": 1,&#10;  "title": "My tree",&#10;  "skills": []&#10;}'></textarea>
-        </div>
-        <div id="import-problems" class="import-problems" hidden></div>
-        <div class="modal-actions">
-          <button type="button" class="btn" id="import-cancel-btn">Cancel</button>
-          <button type="button" class="btn" id="import-viewer-btn">Open in viewer</button>
-          <button type="submit" class="btn btn-primary">Import &amp; publish</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <dialog class="modal" id="import-overlay" aria-labelledby="import-title" closedby="any">
+    <h2 id="import-title">Import a skill tree</h2>
+    <p class="modal-subtitle" id="import-help">
+      Paste a skill tree JSON file, or choose one from your computer.
+      The format is described in <code>FORMAT.md</code>.
+    </p>
+    <form id="import-form">
+      <div class="field">
+        <label for="import-file">From a file</label>
+        <input id="import-file" type="file" accept=".json,application/json" />
+      </div>
+      <div class="field">
+        <label for="import-text">Or paste it here</label>
+        <textarea id="import-text" rows="10" spellcheck="false" autocomplete="off" autocapitalize="off"
+          autofocus aria-describedby="import-help"
+          style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"
+          placeholder='{&#10;  "format": "skilltree",&#10;  "version": 1,&#10;  "title": "My tree",&#10;  "skills": []&#10;}'></textarea>
+      </div>
+      <div id="import-problems" class="import-problems" role="alert" hidden></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="import-cancel-btn">Cancel</button>
+        <button type="button" class="btn" id="import-viewer-btn">Open in viewer</button>
+        <button type="submit" class="btn btn-primary">Import &amp; publish</button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="/layout.js"></script>
+  <script src="/a11y.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -19,9 +19,58 @@ let viewBox = null;
 const MIN_VIEW_SIZE = 150;
 const MAX_VIEW_SIZE = 8000;
 
+// The same keyboard model as the editor — see createGraphKeyboard() in
+// a11y.js. Ids here are the file's own slugs, already strings.
+const graphKeys = createGraphKeyboard({
+  svg,
+  skills: () =>
+    currentTree
+      ? currentTree.skills.map((s) => {
+          const p = positions.get(s.id) || { x: 0, y: 0 };
+          return { id: s.id, name: s.name, x: p.x, y: p.y };
+        })
+      : [],
+  prereqsOf: (id) => (currentTree ? currentTree.edges.filter((e) => e.to === id).map((e) => e.from) : []),
+  unlocksOf: (id) => (currentTree ? currentTree.edges.filter((e) => e.from === id).map((e) => e.to) : []),
+  activate: (id) => {
+    const skill = currentTree && currentTree.skills.find((s) => s.id === id);
+    if (!skill) return;
+    selectedSkillId = skill.id;
+    openSidePanel(skill);
+    render();
+  },
+  onFocus: (id) => highlightGraphPath(id, currentTree, svg),
+  onBlur: () => highlightGraphPath(selectedSkillId, currentTree, svg),
+  zoomBy: (factor) => viewBox && zoomAtCenter(factor),
+  fit: () => fitToContent(),
+  panBy: (fx, fy) => {
+    if (!viewBox) return;
+    viewBox.minX += fx * viewBox.w;
+    viewBox.minY += fy * viewBox.h;
+    applyViewBox();
+  },
+  panByPixels: (dx, dy) => {
+    const scale = 1 / svg.getScreenCTM().a;
+    viewBox.minX += dx * scale;
+    viewBox.minY += dy * scale;
+    applyViewBox();
+  },
+  obstacles: [
+    '.tree-overlay-topleft > *',
+    '.tree-overlay-topright',
+    '.tree-fullscreen-wrap .zoom-controls',
+    '.tree-fullscreen-wrap .legend',
+    '.graph-kbd-hint',
+    '.toast.show',
+  ],
+});
+
+let emptyModal = null;
+
 init();
 
 async function init() {
+  emptyModal = setupModalDialog(document.getElementById('viewer-empty'));
   await loadSignedInUser();
   setupActions();
   setupZoomAndPan();
@@ -43,15 +92,19 @@ async function init() {
 }
 
 function showEmptyModal() {
-  const overlay = document.getElementById('viewer-empty');
-  overlay.hidden = false;
   document.getElementById('modal-file-input').value = '';
   document.getElementById('modal-text-input').value = '';
   document.getElementById('modal-problems').hidden = true;
+  emptyModal.open();
 }
 
+// Closed from script once a tree has loaded. Focus goes to the tree's title,
+// so a screen reader announces what just opened rather than nothing at all.
 function hideEmptyModal() {
-  document.getElementById('viewer-empty').hidden = true;
+  const dialog = document.getElementById('viewer-empty');
+  if (!dialog.open) return;
+  emptyModal.close();
+  document.getElementById('viewer-title').focus();
 }
 
 function setupActions() {
@@ -164,6 +217,15 @@ function setupActions() {
     }
   });
 
+  // Dismissed without loading anything: say so where the title would be,
+  // and point at the ways that are left.
+  document.getElementById('viewer-empty').addEventListener('close', () => {
+    if (currentTree) return;
+    document.getElementById('viewer-title').textContent = 'No skill tree loaded';
+    document.getElementById('viewer-hint').textContent =
+      'Use "Open JSON" to choose a skill tree file, or drop one anywhere on this page.';
+  });
+
   modalLoadBtn.addEventListener('click', () => {
     modalProblems.hidden = true;
     const text = modalTextInput.value.trim();
@@ -216,6 +278,7 @@ function loadNotation(notation) {
 
   document.title = `${currentTree.title} — Skill Tree Viewer`;
   document.getElementById('viewer-title').textContent = currentTree.title;
+  document.getElementById('viewer-hint').textContent = 'Click a skill to see details. Drag to reposition.';
   document.getElementById('viewer-desc').textContent = currentTree.description || 'No description.';
   document.getElementById('viewer-meta').textContent =
     `${skills.length} skill${skills.length === 1 ? '' : 's'} · by ${currentTree.author} · ${currentTree.layout} layout`;
@@ -318,6 +381,8 @@ function render() {
     edgesLayer.appendChild(visible);
   });
 
+  // Rebuilding the layer destroys whichever node had focus; note it first.
+  const refocusId = graphKeys.focusedId();
   nodesLayer.innerHTML = '';
   const sortedSkills = currentTree.skills.slice().sort((a, b) => {
     if (a.id === draggingSkillId) return 1;
@@ -357,9 +422,14 @@ function render() {
     sub.textContent = nPrereq === 0 ? '✦ Start here' : `Needs ${nPrereq} · Unlocks ${nUnlock}`;
     g.appendChild(sub);
 
+    graphKeys.decorate(g, skill, { expanded: skill.id === selectedSkillId });
     attachNodeInteractions(g, skill, p);
     nodesLayer.appendChild(g);
   }
+
+  const count = currentTree.skills.length;
+  svg.setAttribute('aria-label', `Skill graph: ${count} skill${count === 1 ? '' : 's'}`);
+  graphKeys.sync(refocusId);
 
   if (selectedSkillId) {
     highlightGraphPath(selectedSkillId, currentTree, svg);
@@ -419,6 +489,7 @@ function attachNodeInteractions(g, skill, pos) {
       if (!moved) {
         selectedSkillId = skill.id;
         openSidePanel(skill);
+        render(); // so the node shows (and reports, via aria-expanded) that it's the one open
       }
     };
 
@@ -508,11 +579,12 @@ function panToSkill(skill) {
   const targetX = p.x + NODE_W / 2 - viewBox.w / 2;
   const targetY = p.y + NODE_H / 2 - viewBox.h / 2;
   const startTime = performance.now();
-  const duration = 280;
+  // No glide for anyone who has asked for less motion.
+  const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280;
 
   function step(now) {
     const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1);
+    const progress = duration ? Math.min(elapsed / duration, 1) : 1;
     const ease = 1 - Math.pow(1 - progress, 3);
     viewBox.minX = startX + (targetX - startX) * ease;
     viewBox.minY = startY + (targetY - startY) * ease;
@@ -525,12 +597,61 @@ function panToSkill(skill) {
 }
 
 function setupSidePanel() {
-  document.getElementById('panel-close').addEventListener('click', () => {
-    selectedSkillId = null;
-    highlightGraphPath(null, currentTree, svg);
-    document.getElementById('side-panel').classList.remove('open');
-    render();
+  document.getElementById('panel-close').addEventListener('click', closeSidePanel);
+
+  // Escape closes the details panel — but not while a dialog is open (it
+  // closes itself) or while someone is typing.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (document.querySelector('dialog[open]') || isTypingTarget(e.target)) return;
+    if (document.getElementById('side-panel').classList.contains('open')) {
+      e.preventDefault();
+      closeSidePanel();
+    }
   });
+}
+
+// Focus that was inside the panel goes back to the skill it described, never
+// left behind in a panel that's no longer on screen.
+function closeSidePanel() {
+  const panel = document.getElementById('side-panel');
+  const focusWasInside = panel.contains(document.activeElement);
+  const shown = selectedSkillId;
+  selectedSkillId = null;
+  highlightGraphPath(null, currentTree, svg);
+  panel.classList.remove('open');
+  render();
+  if (focusWasInside && !(shown !== null && graphKeys.focusNode(shown))) graphKeys.focusGraph();
+}
+
+// A row of the Requires / Unlocks lists: a button that jumps to that skill.
+function panelLinkRow(skill, otherId) {
+  const other = currentTree.skills.find((x) => x.id === otherId);
+  const li = document.createElement('li');
+  li.className = 'interactive';
+  const jump = document.createElement('button');
+  jump.type = 'button';
+  jump.className = 'panel-jump';
+  jump.textContent = other ? other.name : otherId;
+  if (other) {
+    jump.title = 'Show this skill';
+    const preview = () => highlightGraphPath(other.id, currentTree, svg);
+    const unpreview = () => highlightGraphPath(skill.id, currentTree, svg);
+    jump.addEventListener('mouseenter', preview);
+    jump.addEventListener('mouseleave', unpreview);
+    jump.addEventListener('focus', preview);
+    jump.addEventListener('blur', unpreview);
+    jump.addEventListener('click', () => {
+      panToSkill(other);
+      selectedSkillId = other.id;
+      openSidePanel(other);
+      render();
+    });
+  } else {
+    jump.disabled = true;
+  }
+  li.appendChild(jump);
+  return li;
 }
 
 function openSidePanel(skill) {
@@ -542,56 +663,32 @@ function openSidePanel(skill) {
   prereqList.innerHTML = '';
   const prereqEdges = currentTree.edges.filter((e) => e.to === skill.id);
   if (prereqEdges.length === 0) {
-    prereqList.innerHTML = '<li style="color:var(--text-muted)">None — this is a starting skill.</li>';
+    prereqList.innerHTML = '<li class="panel-empty">None — this is a starting skill.</li>';
   } else {
-    for (const edge of prereqEdges) {
-      const s = currentTree.skills.find((x) => x.id === edge.from);
-      const li = document.createElement('li');
-      li.className = 'interactive';
-      li.textContent = s ? s.name : edge.from;
-      if (s) {
-        li.title = 'Click to jump to this skill';
-        li.addEventListener('mouseenter', () => highlightGraphPath(s.id, currentTree, svg));
-        li.addEventListener('mouseleave', () => highlightGraphPath(skill.id, currentTree, svg));
-        li.addEventListener('click', () => {
-          panToSkill(s);
-          openSidePanel(s);
-        });
-      }
-      prereqList.appendChild(li);
-    }
+    for (const edge of prereqEdges) prereqList.appendChild(panelLinkRow(skill, edge.from));
   }
 
   const unlockList = document.getElementById('panel-unlocks');
   unlockList.innerHTML = '';
   const unlockEdges = currentTree.edges.filter((e) => e.from === skill.id);
   if (unlockEdges.length === 0) {
-    unlockList.innerHTML = '<li style="color:var(--text-muted)">Nothing yet.</li>';
+    unlockList.innerHTML = '<li class="panel-empty">Nothing yet.</li>';
   } else {
-    for (const edge of unlockEdges) {
-      const s = currentTree.skills.find((x) => x.id === edge.to);
-      const li = document.createElement('li');
-      li.className = 'interactive';
-      li.textContent = s ? s.name : edge.to;
-      if (s) {
-        li.title = 'Click to jump to this skill';
-        li.addEventListener('mouseenter', () => highlightGraphPath(s.id, currentTree, svg));
-        li.addEventListener('mouseleave', () => highlightGraphPath(skill.id, currentTree, svg));
-        li.addEventListener('click', () => {
-          panToSkill(s);
-          openSidePanel(s);
-        });
-      }
-      unlockList.appendChild(li);
-    }
+    for (const edge of unlockEdges) unlockList.appendChild(panelLinkRow(skill, edge.to));
   }
 
   document.getElementById('side-panel').classList.add('open');
+  // Into the panel at its heading, so a screen reader starts with the skill's
+  // name; Escape or the close button brings focus back to the graph.
+  document.getElementById('panel-name').focus();
 }
 
 function setupDropZone() {
   const dropOverlay = document.createElement('div');
   dropOverlay.className = 'drop-zone-overlay';
+  // Feedback for a drag in progress, which only a pointer can start; the same
+  // file can be opened by keyboard with "Open JSON" or the dialog.
+  dropOverlay.setAttribute('aria-hidden', 'true');
   dropOverlay.innerHTML = `
     <div class="drop-zone-box">
       <div style="font-size: 36px; margin-bottom: 12px;">📂</div>

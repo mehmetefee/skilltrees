@@ -2,13 +2,39 @@
 
 const API = '/api';
 
+// The toast is also the page's polite live region (role="status"), so every
+// result shown here — link added, skill deleted, save failed — is read out.
 function showToast(msg) {
   const toast = document.getElementById('toast');
   if (!toast) return;
-  toast.textContent = msg;
-  toast.classList.add('show');
+  const write = () => {
+    toast.textContent = msg;
+    toast.classList.remove('toast-top');
+    toast.classList.add('show');
+    // Never on top of whatever has focus (WCAG 2.4.11): along the bottom edge
+    // it can land squarely on a focused skill or button, so in that case it
+    // shows at the top instead.
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && !toast.contains(focused)) {
+      const a = focused.getBoundingClientRect();
+      const b = toast.getBoundingClientRect();
+      if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) {
+        toast.classList.add('toast-top');
+      }
+    }
+  };
+  // A live region only speaks when its text changes, so the same message
+  // twice in a row is cleared first and written a beat later.
+  if (toast.textContent === msg) {
+    toast.textContent = '';
+    setTimeout(write, 50);
+  } else {
+    write();
+  }
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toast.classList.remove('show'), 2400);
+  // Long enough to read, and longer for longer messages (an error with its
+  // reason attached is more than a glance).
+  showToast._t = setTimeout(() => toast.classList.remove('show'), Math.max(3000, msg.length * 70));
 }
 
 async function apiFetch(path, opts) {
@@ -616,7 +642,7 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
       g.classList.add('highlight-node');
     } else if (downstreamNodes.has(sid)) {
       rect.classList.add('highlight-downstream');
-      rect.style.stroke = '#10b981';
+      rect.style.stroke = 'var(--unlocks)';
       rect.style.filter = 'drop-shadow(0 2px 8px rgba(16, 185, 129, 0.4))';
       g.classList.add('highlight-node');
     }
@@ -651,7 +677,7 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
       path.style.markerEnd = ensureArrowheadMarker(containerEl, color);
     } else if (downstreamEdgeKeys.has(edgeKey)) {
       path.classList.add('path-downstream');
-      path.style.stroke = '#10b981';
+      path.style.stroke = 'var(--unlocks)';
       path.style.markerEnd = 'url(#arrowhead-green)';
     }
   });
@@ -766,6 +792,10 @@ async function loadFeatured(summary) {
       tree.description || 'No description yet.';
     document.getElementById('featured-meta').textContent =
       `${tree.skills.length} skill${tree.skills.length === 1 ? '' : 's'} · by ${tree.author} · ${timeAgo(tree.created_at)}`;
+    document.getElementById('featured-svg').setAttribute(
+      'aria-label',
+      `${tree.title}: graph of ${tree.skills.length} skill${tree.skills.length === 1 ? '' : 's'}`
+    );
 
     if (tree.layout === 'auto') {
       const laidOut = SkillTreeLayout.computeRoutes(
@@ -833,6 +863,7 @@ function toFeaturedSvgPoint(evt) {
 }
 
 let featuredDraggingSkillId = null;
+let featuredKeys = null; // keyboard model for the hero graph, see setupFeaturedHero()
 
 // Full-screen rendering of the featured tree's graph. It's a display, not
 // the real editor (no add/link/delete), but zoom, pan, and node dragging all
@@ -841,6 +872,7 @@ function renderFeatured() {
   const svg = document.getElementById('featured-svg');
   if (!svg || !featuredTree) return;
   const { NODE_W, NODE_H } = SkillTreeLayout;
+  const hadFocus = featuredKeys ? featuredKeys.focusedId() : null;
 
   applyFeaturedViewBox();
   svg.innerHTML = '';
@@ -858,7 +890,7 @@ function renderFeatured() {
       <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--accent)"></polygon>
     </marker>
     <marker id="arrowhead-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="#10b981"></polygon>
+      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--unlocks)"></polygon>
     </marker>
   `;
   svg.appendChild(defs);
@@ -933,12 +965,14 @@ function renderFeatured() {
       highlightGraphPath(null, featuredTree, svg);
     });
 
+    if (featuredKeys) featuredKeys.decorate(g, skill);
     attachFeaturedNodeDrag(g, skill, p);
     nodesLayer.appendChild(g);
   }
 
   svg.appendChild(edgesLayer);
   svg.appendChild(nodesLayer);
+  if (featuredKeys) featuredKeys.sync(hadFocus);
 }
 
 // Dragging a node repositions it on screen only — same as tree.js, nothing
@@ -1054,11 +1088,56 @@ function setupFeaturedHero() {
     }
   });
 
-  document.getElementById('featured-zoom-in').addEventListener('click', () => zoomFeaturedAtCenter(0.8));
-  document.getElementById('featured-zoom-out').addEventListener('click', () => zoomFeaturedAtCenter(1.25));
-  document.getElementById('featured-zoom-fit').addEventListener('click', () => {
+  const fitFeatured = () => {
     featuredViewBox = computeFeaturedBounds();
     applyFeaturedViewBox();
+  };
+  document.getElementById('featured-zoom-in').addEventListener('click', () => zoomFeaturedAtCenter(0.8));
+  document.getElementById('featured-zoom-out').addEventListener('click', () => zoomFeaturedAtCenter(1.25));
+  document.getElementById('featured-zoom-fit').addEventListener('click', fitFeatured);
+
+  // The same keyboard model as the editor (see a11y.js). A skill here is a
+  // link — Enter does what a click does, which is open the tree.
+  const edgeIds = (key, id, other) =>
+    featuredTree ? featuredTree.edges.filter((e) => String(e[key]) === id).map((e) => e[other]) : [];
+  featuredKeys = createGraphKeyboard({
+    svg,
+    role: 'link',
+    skills: () =>
+      featuredTree
+        ? featuredTree.skills.map((s) => {
+            const p = featuredPositions.get(s.id) || { x: 0, y: 0 };
+            return { id: s.id, name: s.name, x: p.x, y: p.y };
+          })
+        : [],
+    prereqsOf: (id) => edgeIds('skill_id', id, 'prereq_skill_id'),
+    unlocksOf: (id) => edgeIds('prereq_skill_id', id, 'skill_id'),
+    activate: () => {
+      if (featuredTree) window.location.href = `/tree.html?id=${featuredTree.id}`;
+    },
+    onFocus: (id) => highlightGraphPath(id, featuredTree, svg),
+    onBlur: () => highlightGraphPath(null, featuredTree, svg),
+    zoomBy: (f) => featuredViewBox && zoomFeaturedAtCenter(f),
+    fit: () => featuredViewBox && fitFeatured(),
+    panBy: (fx, fy) => {
+      if (!featuredViewBox) return;
+      featuredViewBox.minX += fx * featuredViewBox.w;
+      featuredViewBox.minY += fy * featuredViewBox.h;
+      applyFeaturedViewBox();
+    },
+    panByPixels: (dx, dy) => {
+      const scale = 1 / svg.getScreenCTM().a;
+      featuredViewBox.minX += dx * scale;
+      featuredViewBox.minY += dy * scale;
+      applyFeaturedViewBox();
+    },
+    obstacles: [
+      '.featured-hero-overlay > *',
+      '.featured-hero .zoom-controls',
+      '.featured-hero .graph-kbd-hint',
+      '.featured-scroll-hint',
+      '.site-header-actions > *',
+    ],
   });
 
   const scrollHint = document.getElementById('scroll-hint-btn');
@@ -1071,13 +1150,16 @@ function setupFeaturedHero() {
       scrollHint.style.display = '';
       const heroBottom = hero.offsetTop + hero.offsetHeight;
       const isPastHero = window.scrollY >= heroBottom - 120;
+      // Only touch the DOM when the state flips: this runs on every scroll
+      // event, and rewriting a focused link's contents drops its focus ring.
+      if (isPastHero === scrollHint.classList.contains('is-fixed')) return;
       if (isPastHero) {
         scrollHint.classList.add('is-fixed');
-        scrollHint.innerHTML = '&uarr; Featured tree';
+        scrollHint.innerHTML = '<span aria-hidden="true">&uarr;</span> Featured tree';
         scrollHint.setAttribute('href', '#featured');
       } else {
         scrollHint.classList.remove('is-fixed');
-        scrollHint.innerHTML = 'Browse all trees &darr;';
+        scrollHint.innerHTML = 'Browse all trees <span aria-hidden="true">&darr;</span>';
         scrollHint.setAttribute('href', '#browse');
       }
     };
@@ -1206,27 +1288,48 @@ function setupFeaturedHero() {
   );
 }
 
-// --- Live search dropdown ---
+// --- Live search: an ARIA 1.2 combobox ---
+//
+// Focus never leaves the text field. The results are a listbox beside it,
+// and the one the arrow keys have reached is named by aria-activedescendant
+// rather than focused — so typing can carry on at any point, and a screen
+// reader hears the highlighted result as if it had focus.
+//
+//   Down / Up   open the list, then move through it (wrapping at the ends)
+//   Enter       open the highlighted tree
+//   Escape      close the list; pressed again, clear the field
 
 function setupSearch() {
   const input = document.getElementById('tree-search');
-  const dropdown = document.getElementById('search-dropdown');
+  const listbox = document.getElementById('search-dropdown');
+  const status = document.getElementById('search-status');
   if (!input) return;
 
   let activeIndex = -1;
   let matches = [];
 
+  const optionId = (i) => `search-option-${i}`;
+
+  const setOpen = (open) => {
+    listbox.hidden = !open;
+    input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) input.removeAttribute('aria-activedescendant');
+  };
+
   const close = () => {
-    dropdown.hidden = true;
-    dropdown.innerHTML = '';
+    setOpen(false);
+    listbox.innerHTML = '';
     activeIndex = -1;
     matches = [];
   };
 
   const renderMatches = () => {
-    dropdown.innerHTML = '';
+    listbox.innerHTML = '';
     matches.forEach((tree, i) => {
       const item = document.createElement('div');
+      item.id = optionId(i);
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
       item.className = 'search-item' + (i === activeIndex ? ' active' : '');
       item.innerHTML = `
         <span class="search-item-title">${escapeHtml(tree.title)}</span>
@@ -1236,15 +1339,33 @@ function setupSearch() {
         e.preventDefault(); // don't let the input lose focus/blur-close before navigation
         window.location.href = `/tree.html?id=${tree.id}`;
       });
-      dropdown.appendChild(item);
+      listbox.appendChild(item);
     });
-    dropdown.hidden = matches.length === 0;
+    setOpen(matches.length > 0);
+    if (activeIndex >= 0) {
+      input.setAttribute('aria-activedescendant', optionId(activeIndex));
+      listbox.children[activeIndex].scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
   };
 
-  input.addEventListener('input', () => {
+  // How many results there are is said once typing pauses, not per key.
+  let statusTimer = null;
+  const reportCount = () => {
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => {
+      if (!input.value.trim()) status.textContent = '';
+      else if (matches.length === 0) status.textContent = 'No skill trees match.';
+      else status.textContent = `${matches.length} skill tree${matches.length === 1 ? '' : 's'} found.`;
+    }, 500);
+  };
+
+  const search = () => {
     const q = input.value.trim().toLowerCase();
     if (!q) {
       close();
+      reportCount();
       return;
     }
     matches = allTrees
@@ -1256,25 +1377,40 @@ function setupSearch() {
       .slice(0, 8);
     activeIndex = -1;
     renderMatches();
-  });
+    reportCount();
+  };
+
+  input.addEventListener('input', search);
 
   input.addEventListener('keydown', (e) => {
-    if (dropdown.hidden || matches.length === 0) return;
-    if (e.key === 'ArrowDown') {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const open = !listbox.hidden && matches.length > 0;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, matches.length - 1);
-      renderMatches();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
+      if (!open) {
+        search();
+        if (matches.length === 0) return;
+        activeIndex = e.key === 'ArrowDown' ? 0 : matches.length - 1;
+      } else if (e.key === 'ArrowDown') {
+        activeIndex = (activeIndex + 1) % matches.length;
+      } else {
+        activeIndex = activeIndex <= 0 ? matches.length - 1 : activeIndex - 1;
+      }
       renderMatches();
     } else if (e.key === 'Enter') {
-      if (activeIndex >= 0) {
+      if (open && activeIndex >= 0) {
         e.preventDefault();
         window.location.href = `/tree.html?id=${matches[activeIndex].id}`;
       }
     } else if (e.key === 'Escape') {
-      close();
+      if (open) {
+        e.preventDefault();
+        close();
+      } else if (input.value) {
+        e.preventDefault();
+        input.value = '';
+        reportCount();
+      }
     }
   });
 
@@ -1286,14 +1422,15 @@ function setupSearch() {
 
 function setupImportModal() {
   const openBtns = document.querySelectorAll('[data-open="import"]');
-  const overlay = document.getElementById('import-overlay');
+  const dialog = document.getElementById('import-overlay');
   const cancelBtn = document.getElementById('import-cancel-btn');
   const form = document.getElementById('import-form');
   const fileInput = document.getElementById('import-file');
   const textInput = document.getElementById('import-text');
   const problemsBox = document.getElementById('import-problems');
   const viewerBtn = document.getElementById('import-viewer-btn');
-  if (!openBtns.length) return;
+  if (!openBtns.length || !dialog) return;
+  const modal = setupModalDialog(dialog);
 
   const showProblems = (heading, list) => {
     problemsBox.innerHTML =
@@ -1307,23 +1444,21 @@ function setupImportModal() {
     problemsBox.innerHTML = '';
   };
 
-  const close = () => {
-    overlay.hidden = true;
+  // However it closes — Cancel, Escape, a click on the backdrop — it opens
+  // blank next time.
+  dialog.addEventListener('close', () => {
     clearProblems();
     form.reset();
-  };
+  });
 
   openBtns.forEach((btn) =>
     btn.addEventListener('click', () => {
       clearProblems();
-      overlay.hidden = false;
+      modal.open();
       textInput.focus();
     })
   );
-  cancelBtn.addEventListener('click', close);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
+  cancelBtn.addEventListener('click', () => modal.close());
 
   // Choosing a file fills the textarea, so what gets imported is always
   // exactly what the person can see.
