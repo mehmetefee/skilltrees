@@ -444,6 +444,29 @@ describe('signing in and linking', () => {
     assert.deepEqual((await alice.fetch('/api/auth/identities')).data, []);
   });
 
+  test('an identity from an issuer no longer configured is listed as unusable', async () => {
+    const dora = browser(srv);
+    await dora.fetch('/api/auth/signup', {
+      method: 'POST',
+      body: { username: 'dora', password: 'correct horse battery staple' },
+    });
+    mock.user = { sub: 'dora-at-sso' };
+    await dora.signIn('oidc', { intent: 'link' });
+    assert.equal((await dora.fetch('/api/auth/identities')).data[0].enabled, true);
+
+    // The operator points OIDC_ISSUER somewhere new; the row keeps the old one.
+    const db = new DatabaseSync(srv.dbPath);
+    db.prepare(`UPDATE user_identities SET issuer = 'https://old-idp.example' WHERE subject = 'dora-at-sso'`).run();
+    db.close();
+    assert.equal((await dora.fetch('/api/auth/identities')).data[0].enabled, false);
+
+    // A subject means nothing under another issuer: the same sub at the
+    // current one is somebody new, not dora.
+    const fresh = browser(srv);
+    await fresh.signIn();
+    assert.notEqual((await fresh.me()).username, 'dora');
+  });
+
   test('log lines never carry codes, tokens or the client secret', async () => {
     const logs = srv.logs.join('');
     assert.ok(!logs.includes(mock.clientSecret));

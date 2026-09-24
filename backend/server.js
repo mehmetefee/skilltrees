@@ -1018,20 +1018,21 @@ route('GET', '/api/auth/identities', async (req, res) => {
   if (!user) return sendJson(res, 401, { error: 'Sign in to see your account.' });
   const rows = db
     .prepare(
-      `SELECT id, provider, display_name, created_at FROM user_identities
+      `SELECT id, provider, issuer, display_name, created_at FROM user_identities
         WHERE user_id = ? ORDER BY id`
     )
     .all(user.id);
   sendJson(
     res,
     200,
-    rows.map((row) => {
+    rows.map(({ issuer, ...row }) => {
       const provider = OAUTH.providers.get(row.provider);
       return {
         ...row,
         provider_name: provider ? provider.name : row.provider,
-        // Configured right now, so usable to sign in with.
-        enabled: !!provider,
+        // Usable to sign in with right now: the provider is configured and
+        // still the same issuer. The same rule signInMethodCount() counts by.
+        enabled: !!provider && provider.issuer === issuer,
       };
     })
   );

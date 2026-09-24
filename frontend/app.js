@@ -384,7 +384,7 @@ async function renderSignInMethods(user, providers) {
     row(identity.provider_name, detail.filter(Boolean).join(' · '), disconnect);
   }
 
-  const connectedIds = new Set(identities.map((i) => i.provider));
+  const connectedIds = new Set(identities.filter((i) => i.enabled).map((i) => i.provider));
   for (const provider of providers) {
     if (connectedIds.has(provider.id)) continue;
     const connect = button('Connect', 'btn btn-small', () =>
