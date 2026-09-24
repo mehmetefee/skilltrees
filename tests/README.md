@@ -11,58 +11,104 @@ as before.
 ## Running them
 
 The app itself has no dependencies, and that's worth preserving — so install
-Playwright **outside** `backend/package.json`:
+Playwright **outside** `backend/package.json`. No server needs to be running:
+every browser suite starts one of its own (see below).
 
 ```bash
-npm install playwright        # once, from the project root
-node backend/server.js        # in another terminal; these hit a live server
-node tests/validator.test.js  # then run any suite
+npm install playwright          # once, from the project root
+node tests/run-e2e.js           # every browser suite, one after another
+node tests/core-crud.test.js    # or any single suite
+node tests/validator.test.js    # the pure validator suite (no browser, no server)
 ```
 
-Each suite exits 0 on success and 1 on failure, and prints a PASS/FAIL line
-per check. They create trees through the API and delete them afterwards, so
-they're safe to run against your working database — though the core CRUD
-suite does briefly add and remove skills.
+Playwright installed globally rather than in the project? Node's `require`
+doesn't look in the global folder by itself, so tell it where that is:
+
+```bash
+NODE_PATH=$(npm root -g) node tests/run-e2e.js
+```
 
 If Playwright can't find a browser, either run `npx playwright install
 chromium` or point the suites at an existing one:
 
 ```bash
-CHROMIUM_PATH=/path/to/chrome node tests/core-crud.test.js
+CHROMIUM_PATH=/path/to/chrome node tests/run-e2e.js
 ```
+
+Each suite prints a PASS/FAIL line per check, a SKIP line for a check it
+can't make (and why), and exits 0 on success and 1 on failure.
+
+### Running every browser suite: `run-e2e.js`
+
+`tests/run-e2e.js` finds the browser suites by pattern — every
+`tests/*.test.js` except the pure ones it lists (`validator.test.js`) — so a
+new suite is picked up by adding the file. It runs them one at a time (each
+starts its own server and Chromium, and running several at once makes
+timing-sensitive checks flaky), streams their output, and ends with a table:
+
+```
+Suite            Result  Checks  Failed  Skipped   Time
+---------------  ------  ------  ------  -------  -----
+core-crud        pass     38/38       0        1   6.6s
+...
+```
+
+It exits non-zero if any suite failed, crashed or timed out. The environment
+is passed through unchanged, so `NODE_PATH`, `CHROMIUM_PATH` and `BASE_URL`
+reach every suite. Name suites to run only those
+(`node tests/run-e2e.js core-crud zoom-pan`); `E2E_TIMEOUT_MS` caps each one
+(default ten minutes).
+
+### Every browser suite starts its own server
+
+Writing needs an account, and signups are rate-limited per address (ten per
+fifteen minutes; imports too, per account and per address), so a shared
+server runs out after a few runs. Each browser suite therefore starts a
+server of its own on a throwaway database with `tests/helpers/server.js`, the
+same way the API suites do, and signs up through the API inside its browser
+context (`context.request` shares the context's cookies). Suites that need
+the example tree ("Home Bread Baking", which predates accounts and so has no
+owner) ask for it with `startServer({ seed: true })`, which runs
+`backend/db/seed.js` against the throwaway database first.
+`tests/helpers/browser.js` holds what the suites share: launching Chromium,
+picking the server, signing up, finding the example tree, the PASS/FAIL/SKIP
+reporter, and watchers for console errors and for write requests.
+
+`BASE_URL=http://localhost:3001` aims a suite at a running server instead
+(all but `oauth-browser`, which needs its mock provider configured on the
+server it starts). They delete the trees they create either way; the
+accounts they sign up stay.
+The suites that use the example tree need it seeded there
+(`node backend/db/seed.js`), and the rate limits above apply — run them one or
+two at a time. The keyboard suite skips its featured-hero checks under
+`BASE_URL`, since featuring a tree takes a script run against the database
+file (`backend/db/feature.js`).
+
+### An open question the suites skip: does the owner's drag save?
+
+CLAUDE.md says "Dragging a skill never saves", and TODO.md ("Saved layouts,
+creator-only") says the frontend doesn't call `PATCH /api/skills/:id` for it.
+But `attachNodeInteractions()` in `frontend/tree.js` does PATCH the new
+position when the tree's owner drags a skill on a manual-layout tree. Until
+that's decided, no suite asserts the owner's manual-layout drag either way:
+`drag-not-saved`, `core-crud` and `layout-modes` print a SKIP line for it.
+What holds either way is asserted — a signed-out visitor's or another
+account's drag never reaches the database, nor does anyone's drag on an
+auto-layout tree. Once it's decided, replace those SKIPs with the answer.
 
 ## The suites
 
 | File | Covers |
 | --- | --- |
 | `validator.test.js` | The format validator: valid shapes, every documented failure mode, cycle detection. No browser or server needed. |
-| `core-crud.test.js` | Creating trees and skills, linking prerequisites, the side panel, deletion, cycle rejection. |
-| `import-export.test.js` | Both import paths (paste and file), export downloads, error surfaces, round-trip fidelity. |
-| `layout-modes.test.js` | `auto` vs `manual`: re-flow on edit, position honouring, both export choices, backward compatibility. |
+| `core-crud.test.js` | Creating a tree on the draft page (saved once it has a title), adding skills, linking prerequisites and the announcement, the side panel, cycle rejection, what a signed-out visitor sees (no edit controls), deleting a skill and the tree. |
+| `import-export.test.js` | Both import paths (paste and file), export downloads, error surfaces (including a signed-out import), byte-identical round trip. |
+| `layout-modes.test.js` | `auto` vs `manual`: re-flow on edit, position honouring, both export choices (capturing a drag the database never saw), backward compatibility. |
 | `skill-placement.test.js` | New skills never overlap, stay on screen, and stay individually clickable. |
-| `zoom-pan.test.js` | Scroll zoom, drag-to-pan, the zoom buttons, and that node dragging still works alongside them. |
-| `drag-not-saved.test.js` | Dragging moves a node visually but never reaches the database. |
-| `oauth-browser.test.js` | "Continue with ..." end to end in Chromium against the mock provider: sign-in, the account panel, connecting and disconnecting, error messages, and no console errors or CSP violations. Starts its own server and provider, so it needs no running server. |
-| `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. Starts its own server — see below. |
-
-### The keyboard suite starts its own server
-
-`a11y-keyboard.test.js` signs up through the API, and signups are
-rate-limited per address (ten per fifteen minutes), so a shared server runs
-out after a few runs. It therefore starts a server of its own on a throwaway
-database with `tests/helpers/server.js`, the same way the API suites do — no
-server needs to be running:
-
-```bash
-node tests/a11y-keyboard.test.js
-# Playwright installed globally rather than in the project:
-NODE_PATH=$(npm root -g) node tests/a11y-keyboard.test.js
-```
-
-`BASE_URL=http://localhost:3001` aims it at a running server instead; the
-featured-hero checks are then skipped, since featuring a tree takes a script
-run against the database file (`backend/db/feature.js`). It deletes the trees
-it creates either way.
+| `zoom-pan.test.js` | Scroll zoom, drag-to-pan, the zoom buttons and Fit, and that node dragging still moves the node rather than the view. Runs signed out: it writes nothing. |
+| `drag-not-saved.test.js` | Dragging moves a node on screen but never reaches the database for a signed-out visitor, another account, or on an auto-layout tree; the owner's manual-layout drag is skipped (see above). |
+| `oauth-browser.test.js` | "Continue with ..." end to end in Chromium against the mock provider: sign-in, the account panel, connecting and disconnecting, error messages, and no console errors or CSP violations. Starts its own mock provider too. |
+| `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. |
 
 ## A note on what these caught
 
@@ -79,9 +125,10 @@ interactive behaviour, it's worth testing it this way rather than trusting
 that the right handlers exist.
 
 One caution: a few checks assert on *expected* console errors — a rejected
-import legitimately logs a 400. Those assertions are written to distinguish
-expected failures from unexpected ones, so don't "fix" them by asserting
-zero console output.
+import legitimately logs a 400 (three of them in `import-export`, plus the
+401 of a signed-out import), and so does the refused cycle in `core-crud`.
+Those assertions are written to distinguish expected failures from
+unexpected ones, so don't "fix" them by asserting zero console output.
 
 ## API suites (no dependencies)
 
