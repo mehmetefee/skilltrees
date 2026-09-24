@@ -670,34 +670,33 @@ Things here that will look wrong but aren't:
 
 ## Testing
 
-Browser-level tests were written with Playwright against a running server,
-covering: core CRUD, cycle rejection, zoom/pan, drag-not-persisting, new-skill
-placement, import/export round-trips, and both layout modes. They live in
-`tests/` if they were copied over; they need `npm install playwright`, which
-breaks the zero-dependency property for the app itself — keep any test
-dependency out of `backend/package.json`. `tests/a11y-keyboard.test.js`
-covers the keyboard and screen-reader behaviour, and starts its own server on
-a throwaway database (see `tests/README.md`).
+Nothing needs a server running first: every suite starts its own on a
+throwaway database through `tests/helpers/server.js` (`PORT=0`,
+`SKILLTREE_DB`), so suites never touch the working database and can't share
+rate-limit counters. Details and per-suite notes are in `tests/README.md`.
 
-The API suites in `tests/api/` need nothing installed: `node --test
-"tests/api/*.test.js"`. Each starts its own server on a throwaway database
-(`tests/helpers/server.js`). Provider sign-in is tested against
-`tests/helpers/mock-oidc.js`, a small OIDC provider on 127.0.0.1 with knobs
-to misbehave (wrong iss, nonce, aud, expired, `alg: none`, unknown kid...);
-`tests/oauth-browser.test.js` runs the same flow in Chromium and fails on any
-console error or CSP violation. The start throttle counts every request from
-127.0.0.1, so suites that fail flows on purpose each get their own server.
-
-API suites need nothing installed: `node --test "tests/api/*.test.js"` (or
-`npm test` in `backend/`). `tests/api/http.test.js` pins the HTTP layer —
-problem details, ETags and 304s, compression, HEAD/OPTIONS/405, 415,
-429 fields, security headers, reports, Fetch Metadata, Early Hints,
-security.txt and graceful shutdown; it talks `node:http` directly because
-`fetch` decodes bodies and hides 1xx responses. `tests/api/account.test.js`
-covers account management — password change and first password, sessions,
-deletion, export, throttling — and audits that every reference to `users`
-cascades; `tests/account-browser.test.js` drives the same sections in
-Chromium.
+- **API suites** (`tests/api/`) need nothing installed: `node --test
+  "tests/api/*.test.js"`, or `npm test` in `backend/`. Among them:
+  `http.test.js` pins the HTTP layer (problem details, ETags and 304s,
+  compression, HEAD/OPTIONS/405, 415, 429 fields, security headers, reports,
+  Fetch Metadata, Early Hints, security.txt, graceful shutdown) and talks
+  `node:http` directly because `fetch` decodes bodies and hides 1xx
+  responses; `oauth.test.js` runs provider sign-in against
+  `tests/helpers/mock-oidc.js`, a small OIDC provider with knobs to misbehave
+  (wrong iss, nonce, aud, expired, `alg: none`, unknown kid...);
+  `account.test.js` covers account management and audits that every
+  reference to `users` cascades. The OAuth start throttle counts every
+  request from 127.0.0.1, so suites that fail flows on purpose each get their
+  own server.
+- **Browser suites** (`tests/*.test.js`, Playwright) cover CRUD and cycle
+  rejection, import/export round trips, both layout modes, skill placement,
+  zoom/pan, dragging, keyboard and screen-reader behaviour, provider sign-in
+  and the account page; each fails on unexpected console errors or CSP
+  violations. `node tests/run-e2e.js` runs them all. Playwright is the one
+  test dependency: install it outside `backend/package.json` (or use a
+  global install with `NODE_PATH=$(npm root -g)`) so the app itself stays
+  dependency-free. `tests/helpers/browser.js` holds what the suites share.
+- `node tests/validator.test.js` is the format validator's unit suite.
 
 Worth knowing: two bugs in this project were only caught by clicking through
 a real browser, not by API tests — a modal that invisibly blocked clicks, and

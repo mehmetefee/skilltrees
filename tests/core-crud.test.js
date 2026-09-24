@@ -214,6 +214,37 @@ const { check, skip, finish } = createReporter();
       await page.textContent('#toast'));
     check('the panel closes when its skill is deleted', (await page.locator('#side-panel.open').count()) === 0);
 
+    // ---------- edits made while a draft's first save is in flight ----------
+    // The create is held on the wire; an edit typed meanwhile must still reach
+    // the server once it lands, not vanish behind a "Saved".
+    {
+      const draft = await context.newPage();
+      let release;
+      const held = new Promise((r) => (release = r));
+      let createSeen;
+      const createStarted = new Promise((r) => (createSeen = r));
+      await draft.route('**/api/trees', async (route) => {
+        if (route.request().method() !== 'POST') return route.continue();
+        createSeen();
+        await held;
+        await route.continue();
+      });
+      await draft.goto(BASE + '/tree.html');
+      await draft.fill('#tree-title', 'Held Draft');
+      await createStarted; // the debounced first save is now on the wire
+      await draft.fill('#tree-desc', 'typed while the create was in flight');
+      await draft.waitForTimeout(900); // past the debounce: the second save runs now
+      release();
+      await draft.waitForURL(/tree\.html\?id=\d+/, { timeout: 5000 });
+      const draftId = Number(new URL(draft.url()).searchParams.get('id'));
+      await draft.waitForFunction(() => document.getElementById('save-status').textContent === 'Saved');
+      const stored = await (await context.request.get(`${BASE}/api/trees/${draftId}`)).json();
+      check('an edit made while the first save is in flight is saved too',
+        stored.description === 'typed while the create was in flight', stored.description);
+      await context.request.delete(`${BASE}/api/trees/${draftId}`, { headers: { Origin: BASE } });
+      await draft.close();
+    }
+
     // ---------- deleting the tree ----------
     await Promise.all([page.waitForURL(BASE + '/', { timeout: 5000 }), page.click('#delete-tree-btn')]);
     treeDeleted = true;
