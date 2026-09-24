@@ -564,20 +564,16 @@ describe('exporting your data', () => {
     await makeTree(fran, 'Pasta');
 
     // Stand-ins for what other features store: a connected provider, and a
-    // passkeys table shaped the way that work may shape it, key material
-    // included — which must not come out.
+    // passkey, key material included — which must not come out.
     const db = openDb(srv);
     db.prepare(
       `INSERT INTO user_identities (user_id, provider, issuer, subject, display_name)
        VALUES (?, 'oidc', 'https://sso.example', 'fran-at-sso', 'fran@sso.example')`
     ).run(fran.user.id);
-    db.exec(`CREATE TABLE IF NOT EXISTS passkeys (
-      id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      name TEXT, credential_id TEXT, public_key TEXT, sign_count INTEGER,
-      created_at TEXT DEFAULT (datetime('now')), last_used_at TEXT)`);
     db.prepare(
-      `INSERT INTO passkeys (user_id, name, credential_id, public_key, sign_count)
-       VALUES (?, 'Laptop', 'CRED-ID-SHOULD-NOT-APPEAR', 'PUBLIC-KEY-SHOULD-NOT-APPEAR', 7)`
+      `INSERT INTO passkeys (user_id, name, credential_id, public_key, alg, sign_count, aaguid, rp_id)
+       VALUES (?, 'Laptop', 'CRED-ID-SHOULD-NOT-APPEAR', 'PUBLIC-KEY-SHOULD-NOT-APPEAR', -7, 7,
+               'AAGUID-SHOULD-NOT-APPEAR', 'skilltrees.example')`
     ).run(fran.user.id);
     const secrets = [
       db.prepare('SELECT password_hash FROM users WHERE id = ?').get(fran.user.id).password_hash,
@@ -623,7 +619,7 @@ describe('exporting your data', () => {
     for (const secret of [...secrets, fran.cookie.split('=')[1], phone.cookie.split('=')[1]]) {
       assert.ok(!res.text_.includes(secret), 'no password hash, token or token hash');
     }
-    for (const leak of ['scrypt$', 'password_hash', 'token_hash', 'public_id', 'CRED-ID', 'PUBLIC-KEY', 'sign_count']) {
+    for (const leak of ['scrypt$', 'password_hash', 'token_hash', 'public_id', 'CRED-ID', 'PUBLIC-KEY', 'AAGUID', 'sign_count']) {
       assert.ok(!res.text_.includes(leak), `nothing like ${leak}`);
     }
     await waitForLog(srv, /data export user=fran id=\d+ trees=2/);
@@ -658,18 +654,20 @@ describe('exporting your data', () => {
   });
 });
 
-describe('exporting with no passkeys table', () => {
+describe('exporting an account without passkeys', () => {
   let srv;
   before(async () => {
     srv = await startServer();
   });
   after(async () => srv.stop());
 
-  test('has no passkeys member at all', async () => {
+  // The passkeys table always exists now (db/init.js makes it), so an
+  // account without any has an empty list rather than no member.
+  test('has an empty passkeys list', async () => {
     const joe = await srv.signup('joe');
     const res = await joe.fetch('/api/auth/export');
     assert.equal(res.status, 200);
-    assert.equal('passkeys' in res.data, false);
+    assert.deepEqual(res.data.passkeys, []);
   });
 });
 

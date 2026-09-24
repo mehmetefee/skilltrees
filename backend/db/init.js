@@ -50,7 +50,9 @@ function openDb() {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      -- The passkey user handle; see migrate().
+      webauthn_user_id TEXT
     );
 
     -- One row per signed-in browser. Deleting a row signs that browser out.
@@ -137,6 +139,57 @@ function openDb() {
       expires_at    TEXT NOT NULL
     );
 
+    -- Passkeys (WebAuthn credentials), the "credential record" of WebAuthn
+    -- Level 3 §4. credential_id is base64url and unique across every
+    -- account (§7.1: a credential ID already registered is refused).
+    -- public_key is the SubjectPublicKeyInfo DER of the key, alg its COSE
+    -- algorithm. rp_id is the RP ID it was made for: a passkey only works
+    -- on that domain, so one made under an earlier PUBLIC_ORIGIN is not a
+    -- way in any more (signInMethodCount() leaves it out). backup_eligible
+    -- and backed_up are the BE and BS flags; aaguid names the make, for a
+    -- default label. name is the owner's to change.
+    CREATE TABLE IF NOT EXISTS passkeys (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      credential_id   TEXT NOT NULL UNIQUE,
+      public_key      BLOB NOT NULL,
+      alg             INTEGER NOT NULL,
+      sign_count      INTEGER NOT NULL DEFAULT 0,
+      transports      TEXT NOT NULL DEFAULT '[]',
+      backup_eligible INTEGER NOT NULL DEFAULT 0,
+      backed_up       INTEGER NOT NULL DEFAULT 0,
+      uv_initialized  INTEGER NOT NULL DEFAULT 0,
+      aaguid          TEXT NOT NULL DEFAULT '',
+      rp_id           TEXT NOT NULL,
+      name            TEXT NOT NULL,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at    TEXT
+    );
+
+    -- One row per passkey ceremony handed to a browser and not finished.
+    -- Like oauth_flows: the challenge and the cookie binding it to one
+    -- browser are kept as SHA-256 only, rows are single-use (deleted by the
+    -- statement that finds them) and short-lived (five minutes). purpose is
+    -- 'register', 'upgrade', 'signup' or 'login', so a challenge issued for
+    -- one ceremony can't finish another; user_id binds a registration to
+    -- the account that asked; username and user_handle carry a sign-up's
+    -- chosen name and new handle until the account exists. counted says
+    -- whether issuing it counted against the address's throttle, so a
+    -- completed sign-in gives back exactly what it took.
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+      challenge_hash TEXT PRIMARY KEY,
+      browser_hash   TEXT NOT NULL,
+      purpose        TEXT NOT NULL,
+      user_id        INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      user_handle    TEXT,
+      username       TEXT,
+      counted        INTEGER NOT NULL DEFAULT 0,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at     TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_passkeys_user ON passkeys(user_id);
+    CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_browser ON webauthn_challenges(browser_hash);
     CREATE INDEX IF NOT EXISTS idx_identities_user ON user_identities(user_id);
     CREATE INDEX IF NOT EXISTS idx_skills_tree ON skills(tree_id);
     CREATE INDEX IF NOT EXISTS idx_prereqs_tree ON prereqs(tree_id);
@@ -193,6 +246,21 @@ function migrate(db) {
     `);
     console.log('Migrated: sessions are now stored hashed and expiring (everyone signed out).');
   }
+
+  // The WebAuthn user handle (Level 3 §14.6.1): random bytes that name the
+  // account to an authenticator, instead of its row id or username — both
+  // guessable, and the username public. Set the first time the account
+  // registers a passkey (or at a passkey sign-up), and never changed after:
+  // every passkey the account has carries it. An ADD COLUMN, not a rebuild —
+  // rebuilding users is the one migration this schema makes dangerous (see
+  // NO_PASSWORD in server.js) — plus a unique index, since SQLite can't add a
+  // column with UNIQUE; NULLs don't collide in it.
+  const userColumns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userColumns.includes('webauthn_user_id')) {
+    db.exec('ALTER TABLE users ADD COLUMN webauthn_user_id TEXT');
+    console.log('Migrated: added users.webauthn_user_id (the passkey user handle).');
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_webauthn_user_id ON users(webauthn_user_id)');
 
   // The session list on the account page (ASVS V3.3.4) needs a handle for
   // each session that is safe to show, and something to tell devices apart

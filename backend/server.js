@@ -10,6 +10,7 @@ const { promisify } = require('node:util');
 const { openDb } = require('./db/init');
 const { hasControlChars, logSafe, stripControlChars } = require('./lib/text');
 const oauth = require('./lib/oauth');
+const webauthn = require('./lib/webauthn');
 const meta = require('./lib/meta');
 const {
   mediaType,
@@ -625,6 +626,14 @@ const COMMON_PASSWORDS = new Set([
   'skilltree', 'skilltrees', 'secret', 'letmein123',
 ]);
 
+// What a username may be, for every way of making an account: the password
+// sign-up here and the passkey sign-up further down.
+function usernameProblem(username) {
+  return /^[a-zA-Z0-9_-]{3,40}$/.test(username)
+    ? null
+    : 'Usernames are 3-40 characters, letters, numbers, dash or underscore.';
+}
+
 function passwordProblem(password, username) {
   if (password.length < MIN_PASSWORD) {
     return `Passwords need at least ${MIN_PASSWORD} characters.`;
@@ -849,6 +858,9 @@ function purgeExpiredSessions() {
   // Sign-ins sent to a provider that never came back. The callback refuses
   // them anyway once expired; this only keeps the table from growing.
   db.prepare(`DELETE FROM oauth_flows WHERE expires_at <= datetime('now')`).run();
+
+  // Passkey ceremonies nobody finished; the same reasoning.
+  db.prepare(`DELETE FROM webauthn_challenges WHERE expires_at <= datetime('now')`).run();
 }
 
 // Answers "may this request change this tree?", replying to the client itself
@@ -936,11 +948,8 @@ route('POST', '/api/auth/signup', async (req, res) => {
   // password is too short costs an attacker nothing and reveals nothing, so
   // counting it would only lock out people fumbling their own signup. Probing
   // which usernames are taken is the part worth rationing.
-  if (!/^[a-zA-Z0-9_-]{3,40}$/.test(username)) {
-    return sendJson(res, 400, {
-      error: 'Usernames are 3-40 characters, letters, numbers, dash or underscore.',
-    });
-  }
+  const nameProblem = usernameProblem(username);
+  if (nameProblem) return sendJson(res, 400, { error: nameProblem });
   const problem = passwordProblem(password, username);
   if (problem) {
     return sendJson(res, 400, { error: problem });
@@ -1071,9 +1080,12 @@ route('GET', '/api/auth/me', async (req, res) => {
   const user = currentUser(req);
   if (!user) return sendJson(res, 200, { user: null });
   // Whether a password is set, so the account page can say so; accounts made
-  // through another provider have none until one is added.
+  // through another provider have none until one is added. And how many
+  // passkeys can sign in to it here, for the same page's list of ways in.
   const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id);
-  sendJson(res, 200, { user: { ...user, has_password: hasPassword(row) } });
+  sendJson(res, 200, {
+    user: { ...user, has_password: hasPassword(row), passkeys: usablePasskeyCount(user.id) },
+  });
 });
 
 // ---------- sign-in through another provider (OAuth 2.0 / OpenID Connect) ----------
@@ -1161,11 +1173,13 @@ function safeNextPath(next, fallback) {
 }
 
 // How many independent ways this account can still sign in, leaving out the
-// identity `excludingIdentityId` when given. Removing a method is refused
-// when this would reach zero. Only identities whose provider is configured
-// right now count: one the operator has since switched off is not a way in.
-// Passkeys, when they land, are one more term in this sum.
-function signInMethodCount(userId, { excludingIdentityId = null } = {}) {
+// identity `excludingIdentityId` or the passkey `excludingPasskeyId` when
+// given. Removing a method is refused when this would reach zero. Only
+// identities whose provider is configured right now count: one the operator
+// has since switched off is not a way in. Passkeys are one more term, by the
+// same rule: only those made for the RP ID in force now (see the passkeys
+// section below).
+function signInMethodCount(userId, { excludingIdentityId = null, excludingPasskeyId = null } = {}) {
   const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
   if (!user) return 0;
   let count = hasPassword(user) ? 1 : 0;
@@ -1176,7 +1190,7 @@ function signInMethodCount(userId, { excludingIdentityId = null } = {}) {
   for (const identity of identities) {
     if (identity.id !== excludingIdentityId && liveIssuers.has(identity.issuer)) count++;
   }
-  return count;
+  return count + usablePasskeyCount(userId, excludingPasskeyId);
 }
 
 // A username for an account made through a provider: its login, preferred
@@ -1480,6 +1494,671 @@ route('DELETE', '/api/auth/identities/:id', async (req, res, params) => {
   }
   db.prepare('DELETE FROM user_identities WHERE id = ?').run(identity.id);
   console.log(`[AUTH] oauth unlinked provider=${identity.provider} user=${user.username} id=${user.id} ip=${clientIp(req)}`);
+  sendJson(res, 200, { ok: true });
+});
+
+// ---------- passkeys (W3C WebAuthn Level 3) ----------
+//
+// Signing up and signing in with a passkey, and managing them. This site is
+// the relying party: lib/webauthn.js reads and checks what authenticators
+// send (CBOR, COSE keys, flags, signatures), and this section owns what the
+// browser and the database see — the challenges, the cookie binding a
+// ceremony to the browser that asked for it, and which account a passkey
+// belongs to. Written against Web Authentication Level 3 (§7.1 and §7.2 are
+// the two ceremonies), with the passkeys.dev guidance for the choices the
+// spec leaves to the site.
+//
+//   GET    /api/auth/passkeys/config            -> { enabled, rp_id }
+//   POST   /api/auth/passkeys/register/options  signed in: creation options
+//   POST   /api/auth/passkeys/register/verify   signed in: stores the passkey
+//   POST   /api/auth/passkeys/signup/options    { username }: creation options
+//   POST   /api/auth/passkeys/signup/verify     makes the account, signs in
+//   POST   /api/auth/passkeys/login/options     request options
+//   POST   /api/auth/passkeys/login/verify      signs in
+//   GET    /api/auth/passkeys                   signed in: this account's passkeys
+//   PATCH  /api/auth/passkeys/:id               signed in: rename one
+//   DELETE /api/auth/passkeys/:id               signed in: remove one
+//
+// Every ceremony is two requests: options, which hands the browser a fresh
+// challenge, and verify, which has to come back signed over it. With
+// PUBLIC_ORIGIN unset there are no passkeys: every route but config answers
+// 404, as the OAuth routes do with no provider configured.
+
+const PASSKEYS = webauthn.configurePasskeys(process.env);
+
+// Five minutes to finish a ceremony — also the timeout the options give the
+// browser. Long enough to fetch a phone for a cross-device sign-in, short
+// enough that an unused challenge isn't worth collecting.
+const PASSKEY_CHALLENGE_TTL_SEC = 5 * 60;
+// A ceiling on unfinished ceremonies across every address, as for OAuth
+// flows: the per-address throttle rations one caller, and this bounds what
+// many callers at once can make the table hold.
+const MAX_PENDING_PASSKEY_CHALLENGES = 5000;
+// Each passkey is a row and an entry in every later registration's
+// excludeCredentials. Nobody needs more than this many.
+const MAX_PASSKEYS_PER_USER = 50;
+// How soon after signing in an automatic passkey upgrade may be asked for
+// (see the register options route).
+const PASSKEY_UPGRADE_WINDOW_SEC = 5 * 60;
+// §14.6.1 recommends 64 random bytes for a user handle.
+const USER_HANDLE_BYTES = 64;
+
+// The cookie that binds a ceremony to the browser that asked for it.
+//
+// A response signed over a challenge is otherwise a bearer credential: a
+// script injected into someone's page, or a hostile extension, could have
+// their authenticator sign a challenge, send the response away, and finish
+// the sign-in from anywhere — leaving with a session of its own. Bound, only
+// the browser that asked can redeem it, and the session cookie that follows
+// lands there, HttpOnly, out of any script's reach. This is the same idea as
+// the OAuth flow cookie, and it matters most for the sign-in options the
+// page fetches as it loads (for autofill), which nobody has to click for.
+//
+// A fresh random value on every options request — never one the request
+// brought with it, since page script can plant a cookie that isn't there
+// yet. SameSite=Strict, not Lax: every request that carries it is a
+// same-origin fetch, never a navigation from another site. HttpOnly, and
+// __Host- over HTTPS for the same reason as the session cookie.
+const PASSKEY_COOKIE = 'skilltree_webauthn';
+
+function passkeyCookieName(req) {
+  return isSecureRequest(req) ? `__Host-${PASSKEY_COOKIE}` : PASSKEY_COOKIE;
+}
+
+function passkeyCookie(value, req) {
+  const flags = ['HttpOnly', 'SameSite=Strict', 'Path=/'];
+  if (isSecureRequest(req)) flags.push('Secure');
+  return `${passkeyCookieName(req)}=${value || ''}; ${flags.join('; ')}; Max-Age=${value ? PASSKEY_CHALLENGE_TTL_SEC : 0}`;
+}
+
+// What the browser is told when a ceremony fails. What actually went wrong
+// is logged; the checks' own words never reach the page.
+const PASSKEY_ERRORS = {
+  off: 'Passkeys are not available on this site.',
+  malformed: 'That passkey response could not be read. Please try again.',
+  expired: 'That passkey request expired, was already used, or was started in another tab. Please try again.',
+  refused: 'That passkey could not be verified.',
+  busy: 'Passkeys are busy. Please try again in a moment.',
+  throttled: 'Too many attempts. Try again in a few minutes.',
+};
+
+function passkeyRefused(req, what, reason) {
+  console.log(`[AUTH] passkey ${what} refused reason="${logSafe(reason, 200)}" ip=${clientIp(req)}`);
+}
+
+// Passkeys that can sign in to this account right now: those made for the
+// RP ID in force. One made under an earlier PUBLIC_ORIGIN is scoped by its
+// authenticator to that domain, and no browser will offer it here — the
+// same rule that counts a provider identity only while its issuer is
+// configured. Used by signInMethodCount() and /api/auth/me.
+function usablePasskeyCount(userId, excludingPasskeyId = null) {
+  if (!PASSKEYS.enabled) return 0;
+  return db
+    .prepare('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ? AND rp_id = ? AND id IS NOT ?')
+    .get(userId, PASSKEYS.rpId, excludingPasskeyId).n;
+}
+
+const newUserHandle = () => crypto.randomBytes(USER_HANDLE_BYTES).toString('base64url');
+
+// The account's user handle, made the first time it's needed. The UPDATE
+// only fills an empty one, so two registrations started at once can't give
+// an account two handles — which would split its passkeys between them in
+// every password manager that groups by handle.
+function userHandleFor(userId) {
+  db.prepare('UPDATE users SET webauthn_user_id = ? WHERE id = ? AND webauthn_user_id IS NULL').run(
+    newUserHandle(),
+    userId
+  );
+  return db.prepare('SELECT webauthn_user_id FROM users WHERE id = ?').get(userId).webauthn_user_id;
+}
+
+function pendingPasskeyChallenges() {
+  return db
+    .prepare(`SELECT COUNT(*) AS n FROM webauthn_challenges WHERE expires_at > datetime('now')`)
+    .get().n;
+}
+
+// Forgets the ceremony this browser had open, if any. Its cookie is about to
+// be replaced, after which nothing could finish that ceremony; keeping the
+// row would only let one browser fill the table by asking again and again.
+// Returns how many rows went.
+function forgetBrowserCeremony(req) {
+  const binding = parseCookies(req)[passkeyCookieName(req)];
+  if (!binding) return 0;
+  return db.prepare('DELETE FROM webauthn_challenges WHERE browser_hash = ?').run(hashToken(binding)).changes;
+}
+
+// A new ceremony: 32 random bytes of challenge (§13.4.3 asks for at least
+// 16), kept only as its SHA-256 like a session token, and a new browser
+// binding. Returns the challenge, for the options, and the cookie to set.
+function issueChallenge(req, { purpose, userId = null, userHandle = null, username = null, counted = false }) {
+  const challenge = crypto.randomBytes(32).toString('base64url');
+  const browser = crypto.randomBytes(32).toString('base64url');
+  db.prepare(
+    `INSERT INTO webauthn_challenges
+       (challenge_hash, browser_hash, purpose, user_id, user_handle, username, counted, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))`
+  ).run(
+    hashToken(challenge),
+    hashToken(browser),
+    purpose,
+    userId,
+    userHandle,
+    username,
+    counted ? 1 : 0,
+    `+${PASSKEY_CHALLENGE_TTL_SEC} seconds`
+  );
+  return { challenge, cookie: passkeyCookie(browser, req) };
+}
+
+// Finds the ceremony a response was made for, by the challenge in its
+// client data (§7.1, §7.2: it must equal the challenge the options gave),
+// and uses it up. Single use: the row is deleted by the statement that
+// finds it, before any other check, so a replayed response — or two
+// arriving at once — finds nothing, and a response refused for any reason
+// has spent its challenge. Then: still live, issued for this kind of
+// ceremony (a sign-in challenge can't finish a registration, or the other
+// way round), for this account (a registration), and to this browser.
+// Returns { ceremony } or { problem }, the problem being for the log.
+function takeChallenge(req, challenge, { purposes, userId = null }) {
+  const row = db
+    .prepare(
+      `DELETE FROM webauthn_challenges WHERE challenge_hash = ?
+       RETURNING *, expires_at > datetime('now') AS live`
+    )
+    .get(hashToken(challenge));
+  if (!row) return { problem: 'unknown or already used challenge' };
+  if (!row.live) return { problem: 'challenge expired' };
+  if (!purposes.includes(row.purpose)) return { problem: `challenge was issued for ${row.purpose}` };
+  if (row.user_id !== userId) return { problem: 'challenge was issued to another account' };
+  const binding = parseCookies(req)[passkeyCookieName(req)];
+  if (!binding || !oauth.safeEqual(hashToken(binding), row.browser_hash)) {
+    return { problem: 'challenge was issued to another browser' };
+  }
+  return { ceremony: row };
+}
+
+function parseTransports(text) {
+  try {
+    const list = JSON.parse(text);
+    return Array.isArray(list) ? list.filter((t) => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// What the owner sees of a passkey. credential_id is there for the Signal
+// API, which names credentials by it; it is no secret (any sign-in that
+// used allowCredentials would publish it), and only the owner gets it.
+function passkeyJson(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    credential_id: row.credential_id,
+    created_at: row.created_at,
+    last_used_at: row.last_used_at,
+    backup_eligible: row.backup_eligible === 1,
+    backed_up: row.backed_up === 1,
+    transports: parseTransports(row.transports),
+    // Usable to sign in with right now: the rule usablePasskeyCount() counts by.
+    enabled: PASSKEYS.enabled && row.rp_id === PASSKEYS.rpId,
+  };
+}
+
+// The half of a registration that sign-up and "add a passkey" share: read
+// the response, find and use up its ceremony, and verify it (§7.1). Answers
+// the request itself when any of that fails and returns null; otherwise
+// returns { ceremony, credential }. An automatic upgrade is the one
+// registration allowed to come back without the UP and UV flags: the
+// browser makes that passkey without asking anyone (§7.1 checks UP only
+// when mediation isn't conditional), and its options only asked for
+// userVerification "preferred".
+function acceptRegistration(req, res, body, { purposes, userId, what }) {
+  const clear = { 'Set-Cookie': passkeyCookie(null, req) };
+  const fail = (status, error, reason) => {
+    passkeyRefused(req, what, reason);
+    sendJson(res, status, { error }, clear);
+    return null;
+  };
+  let response;
+  try {
+    response = webauthn.readRegistrationResponse(body);
+  } catch (e) {
+    if (!(e instanceof webauthn.WebAuthnError)) throw e;
+    return fail(400, PASSKEY_ERRORS.malformed, e.message);
+  }
+  const { ceremony, problem } = takeChallenge(req, response.clientData.data.challenge, { purposes, userId });
+  if (problem) return fail(400, PASSKEY_ERRORS.expired, problem);
+
+  const upgrade = ceremony.purpose === 'upgrade';
+  let credential;
+  try {
+    credential = webauthn.verifyRegistration(response, {
+      rpId: PASSKEYS.rpId,
+      origin: PASSKEYS.origin,
+      requireUserPresence: !upgrade,
+      requireUserVerification: !upgrade,
+    });
+  } catch (e) {
+    if (!(e instanceof webauthn.WebAuthnError)) throw e;
+    return fail(400, e.kind === 'malformed' ? PASSKEY_ERRORS.malformed : PASSKEY_ERRORS.refused, e.message);
+  }
+  // §7.1: a credential ID registered already — to anyone — is refused, so
+  // one credential can never sign in to two accounts. Checked and inserted
+  // without an await between, so nothing can slip in after the check.
+  if (db.prepare('SELECT 1 FROM passkeys WHERE credential_id = ?').get(credential.credentialId)) {
+    return fail(409, 'That passkey is already registered.', 'credential ID already registered');
+  }
+  return { ceremony, credential };
+}
+
+function insertPasskey(userId, credential) {
+  return db
+    .prepare(
+      `INSERT INTO passkeys
+         (user_id, credential_id, public_key, alg, sign_count, transports,
+          backup_eligible, backed_up, uv_initialized, aaguid, rp_id, name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      userId,
+      credential.credentialId,
+      credential.publicKey,
+      credential.alg,
+      credential.signCount,
+      JSON.stringify(credential.transports),
+      credential.backupEligible ? 1 : 0,
+      credential.backedUp ? 1 : 0,
+      credential.userVerified ? 1 : 0,
+      credential.aaguid,
+      PASSKEYS.rpId,
+      webauthn.defaultName(credential.aaguid)
+    ).lastInsertRowid;
+}
+
+// A fresh session, exactly as a password sign-in makes one — and the
+// session this browser had before, if any, is ended rather than left behind.
+function startPasskeySession(req, res, status, user) {
+  const previous = sessionToken(req);
+  if (previous) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(previous));
+  const token = startSession(user.id, req);
+  sendJson(res, status, { id: user.id, username: user.username }, {
+    'Set-Cookie': [sessionCookie(token, req), passkeyCookie(null, req)],
+  });
+}
+
+function passkeyCreationOptions({ challenge, userHandle, username, exclude = [], userVerification }) {
+  return webauthn.creationOptions({
+    rpId: PASSKEYS.rpId,
+    challenge,
+    userHandle,
+    username,
+    exclude,
+    userVerification,
+    timeoutMs: PASSKEY_CHALLENGE_TTL_SEC * 1000,
+  });
+}
+
+// Tells the page whether to offer passkeys at all. Public, and nothing in it
+// is a secret: the RP ID is in every options response anyway.
+route('GET', '/api/auth/passkeys/config', async (req, res) => {
+  sendJson(res, 200, PASSKEYS.enabled ? { enabled: true, rp_id: PASSKEYS.rpId } : { enabled: false });
+});
+
+// "Add a passkey", for the account signed in.
+//
+// Adding a way in is a sensitive change (ASVS V3.7.1), so it takes a sign-in
+// from the last ten minutes, as the account section's changes do
+// (RECENT_AUTH_SEC). A session is only a cookie, and a passkey added through
+// one lifted from a shared computer would outlive everything the owner might
+// do about it — a password change ends every other session, but not a
+// passkey the thief now holds.
+//
+// With { mediation: "conditional" } it is an automatic passkey upgrade: the
+// page asks right after a password sign-in, and the browser may make a
+// passkey in the password manager that just filled the password, without a
+// dialog. That is offered only in the first few minutes of a session.
+route('POST', '/api/auth/passkeys/register/options', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to add a passkey.' });
+  const body = await readBody(req);
+  if (body.mediation !== undefined && body.mediation !== 'conditional') {
+    return sendJson(res, 400, { error: 'mediation must be "conditional" when given.' });
+  }
+  const upgrade = body.mediation === 'conditional';
+  const session = currentSession(req);
+  if (!session || !session.recent) return sendJson(res, 403, { error: SIGN_IN_AGAIN });
+  if (upgrade) {
+    const fresh = db
+      .prepare(`SELECT 1 FROM sessions WHERE token_hash = ? AND created_at > datetime('now', ?)`)
+      .get(session.token_hash, `-${PASSKEY_UPGRADE_WINDOW_SEC} seconds`);
+    if (!fresh) {
+      return sendJson(res, 403, { error: 'An automatic passkey upgrade is only offered just after signing in.' });
+    }
+  }
+
+  const held = db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?').get(user.id).n;
+  if (held >= MAX_PASSKEYS_PER_USER) {
+    return sendJson(res, 409, { error: `An account can have up to ${MAX_PASSKEYS_PER_USER} passkeys. Remove one first.` });
+  }
+  if (pendingPasskeyChallenges() >= MAX_PENDING_PASSKEY_CHALLENGES) {
+    console.log(`[AUTH] passkey options refused: too many pending ip=${clientIp(req)}`);
+    return sendJson(res, 503, { error: PASSKEY_ERRORS.busy });
+  }
+
+  forgetBrowserCeremony(req);
+  // One registration open per account: asking again replaces the last.
+  db.prepare(`DELETE FROM webauthn_challenges WHERE user_id = ? AND purpose IN ('register', 'upgrade')`).run(user.id);
+  const userHandle = userHandleFor(user.id);
+  const { challenge, cookie } = issueChallenge(req, {
+    purpose: upgrade ? 'upgrade' : 'register',
+    userId: user.id,
+    userHandle,
+  });
+  // excludeCredentials (§5.4): every passkey this account already has here,
+  // so an authenticator holding one says so instead of making a second.
+  const exclude = db
+    .prepare('SELECT credential_id, transports FROM passkeys WHERE user_id = ? AND rp_id = ? ORDER BY id')
+    .all(user.id, PASSKEYS.rpId)
+    .map((row) => ({ id: row.credential_id, transports: parseTransports(row.transports) }));
+  sendJson(
+    res,
+    200,
+    passkeyCreationOptions({
+      challenge,
+      userHandle,
+      username: user.username,
+      exclude,
+      userVerification: upgrade ? 'preferred' : 'required',
+    }),
+    { 'Set-Cookie': cookie }
+  );
+});
+
+route('POST', '/api/auth/passkeys/register/verify', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to add a passkey.' });
+  const body = await readBody(req);
+  const accepted = acceptRegistration(req, res, body, {
+    purposes: ['register', 'upgrade'],
+    userId: user.id,
+    what: 'registration',
+  });
+  if (!accepted) return;
+  const { ceremony, credential } = accepted;
+  const clear = { 'Set-Cookie': passkeyCookie(null, req) };
+  const held = db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?').get(user.id).n;
+  if (held >= MAX_PASSKEYS_PER_USER) {
+    return sendJson(res, 409, { error: `An account can have up to ${MAX_PASSKEYS_PER_USER} passkeys. Remove one first.` }, clear);
+  }
+
+  const id = insertPasskey(user.id, credential);
+  console.log(
+    `[AUTH] passkey added user=${user.username} id=${user.id} passkey=${id} alg=${credential.alg} ` +
+      `fmt=${logSafe(credential.fmt, 32)} upgrade=${ceremony.purpose === 'upgrade'} ip=${clientIp(req)}`
+  );
+  sendJson(res, 201, passkeyJson(db.prepare('SELECT * FROM passkeys WHERE id = ?').get(id)), clear);
+});
+
+// Sign-up with a passkey and no password. The same username rule and the
+// same throttle as the password sign-up, counted at the same point: before
+// the work, with a taken name counted as the probe it is. The account is
+// not made here — only once a passkey has been verified for it, so an
+// abandoned sign-up leaves nothing behind but a challenge that expires.
+route('POST', '/api/auth/passkeys/signup/options', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const ipKey = `signup:${clientIp(req)}`;
+  if (throttled(ipKey)) {
+    console.log(`[AUTH] passkey signup throttled ip=${clientIp(req)}`);
+    return sendJson(res, 429, { error: PASSKEY_ERRORS.throttled });
+  }
+  const body = await readBody(req);
+  const username = clean(body.username, 40);
+  const nameProblem = usernameProblem(username);
+  if (nameProblem) return sendJson(res, 400, { error: nameProblem });
+  if (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
+    recordFailure(ipKey);
+    return sendJson(res, 409, { error: 'That username is taken.' });
+  }
+  if (overLimit(ipKey)) {
+    console.log(`[AUTH] passkey signup throttled ip=${clientIp(req)}`);
+    return sendJson(res, 429, { error: PASSKEY_ERRORS.throttled });
+  }
+  if (pendingPasskeyChallenges() >= MAX_PENDING_PASSKEY_CHALLENGES) {
+    console.log(`[AUTH] passkey options refused: too many pending ip=${clientIp(req)}`);
+    return sendJson(res, 503, { error: PASSKEY_ERRORS.busy });
+  }
+
+  forgetBrowserCeremony(req);
+  // The new account's handle, carried by the ceremony until the account
+  // exists; the authenticator stores it with the passkey from the start.
+  const userHandle = newUserHandle();
+  const { challenge, cookie } = issueChallenge(req, { purpose: 'signup', userHandle, username });
+  sendJson(res, 200, passkeyCreationOptions({ challenge, userHandle, username, userVerification: 'required' }), {
+    'Set-Cookie': cookie,
+  });
+});
+
+route('POST', '/api/auth/passkeys/signup/verify', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const body = await readBody(req);
+  const accepted = acceptRegistration(req, res, body, { purposes: ['signup'], userId: null, what: 'signup' });
+  if (!accepted) return;
+  const { ceremony, credential } = accepted;
+
+  // The name was free when the options were issued; someone may have taken
+  // it since. Checked and inserted with no await between, so this check is
+  // the one that decides.
+  if (db.prepare('SELECT id FROM users WHERE username = ?').get(ceremony.username)) {
+    recordFailure(`signup:${clientIp(req)}`);
+    return sendJson(
+      res,
+      409,
+      { error: 'That username was taken while your passkey was being made. Please pick another.' },
+      { 'Set-Cookie': passkeyCookie(null, req) }
+    );
+  }
+
+  // The account and its first passkey together, or neither: an account
+  // with no password and no passkey would be one nobody could sign in to.
+  let userId;
+  db.exec('BEGIN');
+  try {
+    userId = db
+      .prepare('INSERT INTO users (username, password_hash, webauthn_user_id) VALUES (?, ?, ?)')
+      .run(ceremony.username, NO_PASSWORD, ceremony.user_handle).lastInsertRowid;
+    insertPasskey(userId, credential);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  console.log(`[AUTH] passkey signup success user=${logSafe(ceremony.username)} id=${userId} alg=${credential.alg} ip=${clientIp(req)}`);
+  startPasskeySession(req, res, 201, { id: userId, username: ceremony.username });
+});
+
+// Sign-in options. Nothing about the account is asked for or given away:
+// allowCredentials is empty, so the browser offers whichever passkeys it
+// holds for this site, and the passkey says whose it is.
+//
+// The sign-in page fetches these as it loads, so autofill can offer
+// passkeys (conditional mediation) — on every signed-out visit. A browser
+// that already holds a ceremony swaps it for the new one, which adds no row
+// and isn't counted; a request arriving without that cookie makes a new row
+// and counts against its address, and a sign-in that completes gives the
+// count back. So reloading the page costs nothing, and dropping the cookie
+// to fill the table runs into the throttle.
+route('POST', '/api/auth/passkeys/login/options', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  await readBody(req);
+  const counted = forgetBrowserCeremony(req) === 0;
+  if (counted && overLimit(`passkey-options:${clientIp(req)}`)) {
+    console.log(`[AUTH] passkey login options throttled ip=${clientIp(req)}`);
+    return sendJson(res, 429, { error: PASSKEY_ERRORS.throttled });
+  }
+  if (pendingPasskeyChallenges() >= MAX_PENDING_PASSKEY_CHALLENGES) {
+    console.log(`[AUTH] passkey options refused: too many pending ip=${clientIp(req)}`);
+    return sendJson(res, 503, { error: PASSKEY_ERRORS.busy });
+  }
+  const { challenge, cookie } = issueChallenge(req, { purpose: 'login', counted });
+  sendJson(
+    res,
+    200,
+    webauthn.requestOptions({ rpId: PASSKEYS.rpId, challenge, timeoutMs: PASSKEY_CHALLENGE_TTL_SEC * 1000 }),
+    { 'Set-Cookie': cookie }
+  );
+});
+
+route('POST', '/api/auth/passkeys/login/verify', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+
+  // Counted first, before anything is parsed or verified, for the same
+  // reason as the password login: requests arriving together must not all
+  // read the count from before any of them. A signature can't be guessed,
+  // so this rations work and probing rather than guesses; a sign-in that
+  // completes gives its count back.
+  const ipKey = `passkey-login:${clientIp(req)}`;
+  if (overLimit(ipKey)) {
+    console.log(`[AUTH] passkey login throttled ip=${clientIp(req)}`);
+    return sendJson(res, 429, { error: PASSKEY_ERRORS.throttled });
+  }
+  const clear = { 'Set-Cookie': passkeyCookie(null, req) };
+  const fail = (error, reason, extra = {}) => {
+    passkeyRefused(req, 'login', reason);
+    return sendJson(res, 401, { error, ...extra }, clear);
+  };
+
+  const body = await readBody(req);
+  let response;
+  try {
+    response = webauthn.readAuthenticationResponse(body);
+  } catch (e) {
+    if (!(e instanceof webauthn.WebAuthnError)) throw e;
+    passkeyRefused(req, 'login', e.message);
+    return sendJson(res, 400, { error: PASSKEY_ERRORS.malformed }, clear);
+  }
+  const { ceremony, problem } = takeChallenge(req, response.clientData.data.challenge, { purposes: ['login'] });
+  if (problem) return fail(PASSKEY_ERRORS.expired, problem);
+
+  // §7.2: the credential is found by its ID, and only among those made for
+  // this RP ID. One this site doesn't know gets a reply the page can act on:
+  // unknown_credential tells it to call the Signal API's
+  // PublicKeyCredential.signalUnknownCredential(), so the password manager stops
+  // offering a passkey whose account, or whose record here, is gone.
+  const stored = db
+    .prepare(
+      `SELECT passkeys.*, users.username, users.webauthn_user_id
+         FROM passkeys JOIN users ON users.id = passkeys.user_id
+        WHERE passkeys.credential_id = ? AND passkeys.rp_id = ?`
+    )
+    .get(response.id, PASSKEYS.rpId);
+  if (!stored) {
+    return fail('That passkey is not registered here. It may have been removed from its account.', 'unknown credential', {
+      unknown_credential: true,
+    });
+  }
+
+  let result;
+  try {
+    result = webauthn.verifyAuthentication(response, {
+      rpId: PASSKEYS.rpId,
+      origin: PASSKEYS.origin,
+      credential: {
+        publicKey: Buffer.from(stored.public_key),
+        alg: stored.alg,
+        signCount: stored.sign_count,
+        backupEligible: stored.backup_eligible === 1,
+        userHandle: stored.webauthn_user_id ? Buffer.from(stored.webauthn_user_id, 'base64url') : null,
+      },
+    });
+  } catch (e) {
+    if (!(e instanceof webauthn.WebAuthnError)) throw e;
+    if (e.kind === 'counter') {
+      // §6.1.1: the one signal WebAuthn gives that a credential's private
+      // key exists twice. Refused, and said loudly, with enough to act on.
+      console.log(
+        `[AUTH] passkey signature counter went backwards — possible cloned authenticator ` +
+          `user=${stored.username} id=${stored.user_id} passkey=${stored.id} stored=${stored.sign_count} ` +
+          `received=${e.received} ip=${clientIp(req)}`
+      );
+      return sendJson(res, 401, { error: PASSKEY_ERRORS.refused }, clear);
+    }
+    if (e.kind === 'malformed') {
+      passkeyRefused(req, 'login', e.message);
+      return sendJson(res, 400, { error: PASSKEY_ERRORS.malformed }, clear);
+    }
+    return fail(PASSKEY_ERRORS.refused, `${e.message} (passkey=${stored.id})`);
+  }
+
+  // The new counter and backup state (BS can change: a passkey gets synced
+  // after it is made). No await since the check, so a second sign-in with
+  // the same counter can't have passed it in between.
+  db.prepare(
+    `UPDATE passkeys SET sign_count = ?, backed_up = ?, uv_initialized = 1, last_used_at = datetime('now')
+      WHERE id = ?`
+  ).run(result.signCount, result.backedUp ? 1 : 0, stored.id);
+  undoAttempt(ipKey);
+  if (ceremony.counted) undoAttempt(`passkey-options:${clientIp(req)}`);
+  console.log(`[AUTH] passkey login success user=${stored.username} id=${stored.user_id} passkey=${stored.id} ip=${clientIp(req)}`);
+  startPasskeySession(req, res, 200, { id: stored.user_id, username: stored.username });
+});
+
+route('GET', '/api/auth/passkeys', async (req, res) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to see your account.' });
+  const rows = db.prepare('SELECT * FROM passkeys WHERE user_id = ? ORDER BY id').all(user.id);
+  const handle = db.prepare('SELECT webauthn_user_id FROM users WHERE id = ?').get(user.id).webauthn_user_id;
+  sendJson(res, 200, {
+    // rp_id and user_handle are what the page's Signal API calls need,
+    // and sign_in_methods lets it grey out removing the last way in.
+    rp_id: PASSKEYS.rpId,
+    user_handle: handle || null,
+    sign_in_methods: signInMethodCount(user.id),
+    passkeys: rows.map(passkeyJson),
+  });
+});
+
+// A passkey of another account answers exactly like one that doesn't exist.
+function ownPasskey(user, idParam) {
+  const passkeyId = parseId(idParam);
+  return passkeyId
+    ? db.prepare('SELECT * FROM passkeys WHERE id = ? AND user_id = ?').get(passkeyId, user.id)
+    : null;
+}
+
+route('PATCH', '/api/auth/passkeys/:id', async (req, res, params) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to change your account.' });
+  const passkey = ownPasskey(user, params.id);
+  if (!passkey) return sendJson(res, 404, { error: 'No such passkey.' });
+  const body = await readBody(req);
+  const name = cleanLine(body.name, 60);
+  if (!name) return sendJson(res, 400, { error: 'Give the passkey a name.' });
+  db.prepare('UPDATE passkeys SET name = ? WHERE id = ?').run(name, passkey.id);
+  sendJson(res, 200, passkeyJson(db.prepare('SELECT * FROM passkeys WHERE id = ?').get(passkey.id)));
+});
+
+route('DELETE', '/api/auth/passkeys/:id', async (req, res, params) => {
+  if (!PASSKEYS.enabled) return sendJson(res, 404, { error: PASSKEY_ERRORS.off });
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to change your account.' });
+  const passkey = ownPasskey(user, params.id);
+  if (!passkey) return sendJson(res, 404, { error: 'No such passkey.' });
+  // The last way in stays, as for a connected provider. A passkey that
+  // can't sign in here any more (made for another RP ID) never counted, so
+  // removing it is always allowed. No await between count and delete.
+  const usable = passkey.rp_id === PASSKEYS.rpId;
+  if (usable && signInMethodCount(user.id, { excludingPasskeyId: passkey.id }) < 1) {
+    return sendJson(res, 409, {
+      error: 'This is the only way you can sign in. Add another one before removing it.',
+    });
+  }
+  db.prepare('DELETE FROM passkeys WHERE id = ?').run(passkey.id);
+  console.log(`[AUTH] passkey removed user=${user.username} id=${user.id} passkey=${passkey.id} ip=${clientIp(req)}`);
   sendJson(res, 200, { ok: true });
 });
 
@@ -1846,13 +2525,12 @@ route('DELETE', '/api/auth/account', async (req, res) => {
   });
 });
 
-// Passkeys are being built separately: until they land there is no table,
-// and when they do its columns are theirs to name. So the table is looked
-// for, and only columns on this list are read — an id, a name, when it was
-// made and last used. Never the public key, the credential id or the
-// signature counter: none of it is a secret the way a password is, but none
-// of it means anything to a person or anywhere else, which is what this
-// export is for. Both lists are constants, so nothing a caller sends ends up
+// Passkeys were built separately, so the table (passkeys, in the passkeys
+// section above) is looked for rather than assumed, and only columns on this
+// list are read — an id, a name, when it was made and last used. Never the
+// public key, the credential id or the signature counter: none of it is a
+// secret the way a password is, but none of it means anything to a person
+// or anywhere else, which is what this export is for. Both lists are constants, so nothing a caller sends ends up
 // in the SQL.
 const PASSKEY_TABLES = ['passkeys', 'webauthn_credentials'];
 const PASSKEY_EXPORT_COLUMNS = ['id', 'name', 'label', 'nickname', 'created_at', 'last_used_at', 'last_used'];
@@ -2536,9 +3214,12 @@ function serveChangePassword(req, res) {
 // W3C "A Well-Known URL for Relying Party Passkey Endpoints": 200 and
 // application/json, never a redirect (the spec says so outright). Its URLs
 // have to be absolute (see passkeyEndpoints() in lib/meta.js), so without
-// PUBLIC_ORIGIN there is nothing correct to say: 404.
+// PUBLIC_ORIGIN there is nothing correct to say: 404. The same when
+// PUBLIC_ORIGIN is set but passkeys are off (an origin by IP address, say):
+// pointing a password manager at a section that isn't there would be worse
+// than saying nothing.
 function servePasskeyEndpoints(req, res) {
-  if (!CONFIGURED_ORIGIN) return sendText(res, 404);
+  if (!CONFIGURED_ORIGIN || !PASSKEYS.enabled) return sendText(res, 404);
   if (answeredReadOnly(req, res)) return;
   return sendRepresentation(req, res, 200, Buffer.from(JSON.stringify(meta.passkeyEndpoints(CONFIGURED_ORIGIN))), {
     'Content-Type': 'application/json',
@@ -3121,6 +3802,8 @@ setInterval(purgeExpiredSessions, 60 * 60 * 1000).unref();
 // Which providers are on, and why any that were asked for are not. Never the
 // secrets: only names, and the callback URL each provider needs registered.
 for (const note of OAUTH.notes) console.log(`[AUTH] ${logSafe(note, 300)}`);
+// Whether passkeys are on, and for which RP ID — or what stops them.
+console.log(`[AUTH] ${logSafe(PASSKEYS.note, 300)}`);
 // Fetch each discovery document now, so a mistyped issuer shows up in the
 // startup log rather than on someone's first click. Not awaited: a slow
 // provider must not hold up the server, and the first sign-in retries anyway.

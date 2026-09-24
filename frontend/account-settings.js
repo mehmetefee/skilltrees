@@ -497,8 +497,9 @@ function revealAccountSection() {
 function setupAccountSettings(user, providers) {
   const sessions = setupSessionsSection();
   setupPasswordSection(user, () => {
-    // "Password: Set" in the sign-in methods, and the other browsers gone.
-    renderSignInMethods(user, providers);
+    // "Password: Set" in the sign-in methods (and one more way in, which the
+    // passkeys section counts too), and the other browsers gone.
+    document.dispatchEvent(new CustomEvent('account:methods-changed'));
     sessions.reload();
   });
   setupDataSection();

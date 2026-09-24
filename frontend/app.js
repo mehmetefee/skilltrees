@@ -228,6 +228,8 @@ async function setupAccountPage() {
     toggle.textContent = signup ? 'I already have an account' : 'Create an account instead';
     password.autocomplete = signup ? 'new-password' : 'current-password';
     errorBox.hidden = true;
+    // passkeys.js shows the passkey option that fits the mode.
+    document.dispatchEvent(new CustomEvent('account:mode', { detail: { mode } }));
   };
 
   toggle.addEventListener('click', () => {
@@ -248,6 +250,12 @@ async function setupAccountPage() {
         method: 'POST',
         body: JSON.stringify({ username: username.value.trim(), password: password.value }),
       });
+      // Signed in with a password: the browser may now offer to make a
+      // passkey without asking (an automatic upgrade). Never throws, and
+      // gives up quickly when there's nothing to do.
+      if (mode === 'login' && window.SkillTreePasskeys) {
+        await window.SkillTreePasskeys.afterPasswordSignIn();
+      }
       // Only ever back to a path on this site, decided by the URL parser
       // rather than by a pattern. A regex cannot be trusted here: the
       // browser strips ASCII tab and newline from a URL *after* any check
@@ -310,6 +318,7 @@ function showSignInView(providers) {
   }
   list.hidden = divider.hidden = providers.length === 0;
   view.hidden = false;
+  document.dispatchEvent(new CustomEvent('account:signed-out'));
 }
 
 // Signed in: the "Your account" panel.
@@ -338,9 +347,21 @@ function showAccountView(user, providers, connected) {
     if (provider) showToast(`Connected ${provider.name}.`);
   }
   renderSignInMethods(user, providers);
+  // A way in was added or removed — a provider here, a passkey or the
+  // password further down: every section showing ways in redraws from the
+  // server, which decides what may be removed. `user` is shared with
+  // account-settings.js, so it is brought up to date rather than replaced.
+  document.addEventListener('account:methods-changed', async () => {
+    const fresh = await loadSignedInUser();
+    if (!fresh) return;
+    Object.assign(user, fresh);
+    renderSignInMethods(user, providers);
+  });
   // The password, sessions, your data and deleting the account live in
-  // account-settings.js, which only account.html loads.
+  // account-settings.js, which only account.html loads; passkeys in
+  // passkeys.js, which listens for this.
   if (typeof setupAccountSettings === 'function') setupAccountSettings(user, providers);
+  document.dispatchEvent(new CustomEvent('account:signed-in', { detail: { user } }));
 }
 
 // "Sign-in methods": the password, each connected provider with Disconnect,
@@ -359,7 +380,8 @@ async function renderSignInMethods(user, providers) {
     return;
   }
 
-  const usable = (user.has_password ? 1 : 0) + identities.filter((i) => i.enabled).length;
+  const passkeys = user.passkeys || 0;
+  const usable = (user.has_password ? 1 : 0) + identities.filter((i) => i.enabled).length + passkeys;
 
   const row = (name, detail, action) => {
     const li = document.createElement('li');
@@ -403,7 +425,23 @@ async function renderSignInMethods(user, providers) {
   toPassword.className = 'btn btn-small';
   toPassword.href = '#account-password';
   toPassword.textContent = user.has_password ? 'Change' : 'Set a password';
-  row('Password', user.has_password ? 'Set' : 'Not set — you sign in through a provider below', toPassword);
+  row(
+    'Password',
+    user.has_password
+      ? 'Set'
+      : passkeys > 0
+        ? 'Not set — you sign in with a passkey'
+        : 'Not set — you sign in through a provider below',
+    toPassword
+  );
+  // Passkeys, likewise, are managed in their own section.
+  if (passkeys > 0) {
+    const toPasskeys = document.createElement('a');
+    toPasskeys.className = 'btn btn-small';
+    toPasskeys.href = '#account-passkeys';
+    toPasskeys.textContent = 'Manage';
+    row('Passkeys', `${passkeys} passkey${passkeys === 1 ? '' : 's'}`, toPasskeys);
+  }
 
   for (const identity of identities) {
     const detail = [identity.display_name, `connected ${timeAgo(identity.created_at)}`];
@@ -412,7 +450,7 @@ async function renderSignInMethods(user, providers) {
     const disconnect = button('Disconnect', 'btn btn-small btn-danger', async () => {
       await apiFetch(`/auth/identities/${encodeURIComponent(identity.id)}`, { method: 'DELETE' });
       showToast(`Disconnected ${identity.provider_name}.`);
-      renderSignInMethods(user, providers);
+      document.dispatchEvent(new CustomEvent('account:methods-changed'));
     });
     if (last) {
       disconnect.disabled = true;

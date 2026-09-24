@@ -33,7 +33,8 @@ Optional environment:
   the only source of absolute URLs: security.txt's `Canonical`, pages'
   canonical / `og:url` / `og:image`, JSON-LD `url`, robots.txt's `Sitemap`,
   `/sitemap.xml` and `/.well-known/passkey-endpoints` (the last two are 404
-  without it). Unset is fine.
+  without it). It is also what switches on passkeys (their RP ID is its
+  host) and provider sign-in. Unset is fine: password accounts only.
 - `SECURITY_CONTACT` — turns on `/.well-known/security.txt` (RFC 9116).
   One or more comma-separated `mailto:`, `https:` or `tel:` URIs (a bare
   address gets `mailto:`). Unset, the file is a 404: Contact is mandatory,
@@ -61,6 +62,8 @@ backend/
   lib/http.js      negotiation, ETags, compression, problem details (pure)
   lib/oauth.js     sign-in through GitHub/Google/OIDC: talks to providers
                    (discovery, PKCE, token exchange, ID-token checks, JWKS)
+  lib/webauthn.js  passkeys: CBOR, COSE keys, authenticator data and both
+                   WebAuthn ceremonies' checks (pure; no database or HTTP)
   lib/meta.js      page metadata (Open Graph, canonical, JSON-LD), robots.txt,
                    sitemap, passkey endpoints — text and escaping only (pure)
 frontend/
@@ -77,6 +80,8 @@ frontend/
                        panel (its code is the account section of app.js)
   account-settings.js  that panel's password, sessions, "your data" and
                        delete-account sections
+  passkeys.js          passkey sign-in (button + autofill), sign-up, and the
+                       panel's Passkeys section — loaded before app.js
   tree.html/tree.js    the graph view, and where trees are created:
                        render, edit, title/description, zoom/pan, export
   viewer.html/viewer.js  view a tree from a file without publishing it
@@ -87,7 +92,8 @@ tools/validate-tree.js  format validator (CLI + module)
 tools/make-icons.js     renders the PNG icons and the social card (Playwright;
                         outputs committed, so only rerun when the art changes)
 tests/api/              API suites (node:test, no dependencies)
-tests/helpers/          test server launcher, mock OIDC provider
+tests/helpers/          test server launcher, mock OIDC provider, software
+                        WebAuthn authenticator
 .env.example            every environment setting, documented
 examples/               sample trees in the portable format
 FORMAT.md               the JSON format spec — read this before touching import/export
@@ -576,8 +582,9 @@ and the rule each one exists for:
   whoever is signed in — otherwise anyone able to finish a flow in your
   browser could attach their provider account to yours and sign in as you.
 - **The last way in can't be removed.** `signInMethodCount()` — a password,
-  plus identities whose provider is configured *now* under the same issuer —
-  must stay at least one after a disconnect. Passkeys will be one more term.
+  plus identities whose provider is configured *now* under the same issuer,
+  plus passkeys made for the RP ID in force now — must stay at least one
+  after a disconnect.
 - **An account with no password** stores `''` (`NO_PASSWORD`) in
   `users.password_hash`. Not NULL: the column is NOT NULL, and relaxing that
   means rebuilding `users` — which, with foreign keys on, deletes every
@@ -600,6 +607,161 @@ and the rule each one exists for:
 - **Rationed**: each start counts against the per-address throttle (given
   back when the sign-in completes, like a successful login), and unfinished
   flows are capped at 5000 overall.
+
+### Passkeys
+
+Signing up and signing in with a passkey — W3C Web Authentication Level 3, a
+Recommendation since 25 August 2026 — and managing them on the account page.
+`lib/webauthn.js` reads and checks what authenticators send (CBOR, COSE keys,
+authenticator data, signatures) on node:crypto alone; the routes, challenges
+and accounts are the passkeys section of `server.js`, after the OAuth one;
+`frontend/passkeys.js` is the browser half. On only when `PUBLIC_ORIGIN` is
+set: `GET /api/auth/passkeys/config` says whether, and every other passkey
+route answers 404 without it — as does `/.well-known/passkey-endpoints`
+(which points password managers at `/account.html#account-passkeys`, so
+that section keeps its id). Section numbers below are Level 3's. The
+measures, and the rule each one exists for:
+
+- **RP ID and origin come from `PUBLIC_ORIGIN`, never the Host header**
+  (§13.4.9), for the reason the OAuth redirect URI does. The RP ID is its
+  host — the narrowest scope that works — and `clientDataJSON.origin` must
+  equal the origin exactly: no suffix match, no parse-and-compare. An
+  origin by IP address leaves passkeys off (browsers refuse an IP as an RP
+  ID). `crossOrigin: true` or any `topOrigin` is refused: this site is never
+  framed, so a ceremony run in a frame is not one it started.
+- **Discoverable, user-verified, no attestation.** `residentKey: "required"`
+  so sign-in can send an empty `allowCredentials` — nobody types a username
+  first, and the server never says which accounts exist.
+  `userVerification: "required"` because a passkey replaces a password
+  rather than adding to one: the device must check it's the person, so both
+  ceremonies refuse a response without UV (and without UP).
+  `attestation: "none"`; a response in another format is accepted with its
+  statement ignored — we don't do attestation trust (TODO.md). `credProps`
+  is asked for, and a client that reports `rk: false` is refused: a
+  non-discoverable credential could never sign in here.
+- **Three algorithms: Ed25519 (-8), ES256 (-7), RS256 (-257)**, and the key
+  must be one the options offered, its key type and curve fitting the
+  algorithm (the rule the ID-token check follows). RSA under 2048 bits, or
+  with an exponent other than 65537, is refused — node:crypto imports e=1,
+  which makes every message its own signature. ES256 signatures are DER.
+- **The CBOR reader is strict and bounded** (CTAP 2.2 §8): definite lengths
+  only; no tags, floats or `undefined`; map keys integers or text, never
+  repeated; integers within 2^53; nesting at most 16 deep. Every length is
+  checked against the bytes left *before* anything is allocated or looped
+  over, so a header claiming four billion entries costs its own five bytes.
+  Authenticator data must be consumed exactly — flags promising data that
+  isn't there, or bytes the flags don't account for, are refused. Each field
+  has a cap (credential ID 1023 bytes, the spec's maximum; client data 4 KB;
+  attestation object 64 KB). Malformed input is a 400, never a 500.
+- **Challenges** are 32 random bytes, kept only as SHA-256 (the challenge in
+  the client data is the lookup key), five minutes, and **single use**: the
+  row is deleted by the statement that finds it, before any other check, so
+  a replay finds nothing and a response refused for any reason has spent its
+  challenge. Each is bound to its purpose (`register`, `upgrade`, `signup`,
+  `login`), so one ceremony's challenge can't finish another, and a
+  registration's to the account that asked.
+- **Bound to the browser that asked**, by an HttpOnly cookie
+  (`skilltree_webauthn`; `__Host-` over HTTPS) minted fresh on every options
+  request, whose hash the ceremony must match. Without it a signed response
+  is a bearer credential: a script injected into someone's page could have
+  their authenticator sign, send the response away and finish the sign-in
+  elsewhere, leaving with a session of its own. Never a value the request
+  brought (page script can plant a cookie that isn't there yet).
+  SameSite=Strict — unlike the OAuth flow cookie, nothing here arrives by a
+  cross-site navigation.
+- **The user handle is 64 random bytes** (§14.6.1) in
+  `users.webauthn_user_id`, made the first time it's needed and never
+  changed; not the row id, not the username. A sign-in's `userHandle` must be
+  present and equal the handle of the account that owns the credential, or
+  one account's passkey could be presented as another's.
+- **The signature counter must rise** (§6.1.1). Zero on both sides is fine
+  for ever: synced passkeys don't count. Once either side is non-zero, a
+  value not above the stored one is refused and logged as a possible cloned
+  authenticator — including a fall back to zero, which the spec counts as a
+  regression too: a clone that doesn't count must not slip by saying 0.
+- **BE is fixed, BS may change** (§6.1.3). BS without BE is refused, a BE
+  that differs from registration is refused, and BS is updated on each
+  sign-in (the list's "synced").
+- **A credential ID belongs to one account**: one already registered, to
+  anyone, is refused with 409, checked and inserted with no await between.
+- **Sign-up with a passkey makes no account until the passkey verifies**;
+  then the account (with `NO_PASSWORD`) and its passkey go in together, in
+  one transaction. Same username rule (`usernameProblem()`) and the same
+  `signup:<address>` throttle as the password sign-up, counted at the same
+  point. A name taken meanwhile is a 409 and leaves nothing behind.
+- **A fresh session** on every passkey sign-in and sign-up, as for a
+  password, and the browser's previous session is deleted.
+- **Adding a passkey needs a sign-in from the last ten minutes** (ASVS
+  V3.7.1; `RECENT_AUTH_SEC`, as the account section's lasting changes do),
+  and answers 403 with "Sign in again" otherwise. A passkey added through a
+  lifted cookie would outlive everything its owner might do — a password
+  change ends every other session, but not a passkey the thief holds.
+- **Automatic passkey upgrade** (conditional create): right after a password
+  sign-in the page asks for options with `mediation: "conditional"`, which
+  only a session under five minutes old gets, with `userVerification:
+  "preferred"`. That is the one registration allowed without UP and UV —
+  §7.1 checks UP only "if options.mediation is not set to conditional". The
+  browser decides; the page stays silent either way and waits at most 5 s.
+- **Throttled before the work**: sign-in verify per address
+  (`passkey-login:<address>`), given back on success; sign-in options per
+  address (`passkey-options:<address>`), but only when the browser isn't
+  replacing a ceremony of its own — reloading the sign-in page costs nothing,
+  dropping the cookie to fill the table runs into the limit — and given back
+  exactly when that ceremony signs someone in (`counted`). Unfinished
+  ceremonies are capped at 5000 overall (503); an account has one
+  registration open at a time and at most 50 passkeys.
+- **The password manager is kept in step** (the Signal API). A sign-in with
+  a credential this site doesn't know (removed, or its account deleted)
+  answers 401 with `unknown_credential: true`, and the page calls
+  `signalUnknownCredential()`. The account page calls
+  `signalAllAcceptedCredentials()` — the passkeys usable here, all of them,
+  for this user handle — and `signalCurrentUserDetails()` whenever it lists
+  them. Best effort: never awaited, silent where unsupported.
+- **The last way in can't be removed**: `signInMethodCount()` counts
+  passkeys made for the current RP ID, so neither the last passkey nor the
+  last provider can go. One made for an old RP ID never counted and can
+  always be removed.
+- **Owner-only management**: another account's passkey answers 404; names
+  go through `cleanLine()` (60 characters); the list is metadata, never key
+  material. Failures reach the page as one of a few fixed sentences; what
+  really happened is logged through `logSafe()`
+  (`[AUTH] passkey <ceremony> refused reason="..."`).
+- **Autofill** (conditional mediation): the username field is
+  `autocomplete="username webauthn"`, and a `get()` with `mediation:
+  "conditional"` waits while the sign-in view is up, when
+  `getClientCapabilities()` reports `conditionalGet` (or, without it,
+  `isConditionalMediationAvailable()`). It is aborted through an
+  AbortController before anything else starts a ceremony — the button, the
+  sign-up button, the password form — because a browser runs one at a time,
+  and renewed every four minutes, before its challenge expires.
+
+Things here that will look wrong but aren't:
+
+- **`passkeys.js` loads before `app.js`.** It only listens (`account:mode`,
+  `account:signed-out`, `account:signed-in`, `account:methods-changed`), and
+  app.js may fire those before a later script would have run. app.js calls
+  back once: it awaits `SkillTreePasskeys.afterPasswordSignIn()` before
+  navigating away from a password sign-in.
+- **The signed-out account page POSTs on every load** — the autofill request's
+  options. Replacing its own ceremony, it adds no row and costs no throttle.
+- **An autofill failure with `NotAllowedError` shows nothing.** Nobody clicked
+  anything; only a server refusal (someone did pick a passkey) is worth a
+  message.
+- **Chromium's virtual authenticator answers a pending autofill request at
+  once**, as if the passkey had been picked; `tests/passkeys-browser.test.js`
+  switches autofill off for one page load (`test:no-autofill` in
+  localStorage, read by the test's own init script) to click the button.
+
+Passkey limits, deliberate for now: attestation is not verified, so the site
+can't restrict which authenticators are used (no FIDO metadata); one RP ID
+and no Related Origin Requests (`/.well-known/webauthn`), so passkeys work on
+`PUBLIC_ORIGIN`'s host only, and changing that host strands every passkey made
+under the old one (listed, removable, no longer a way in); one ceremony per
+browser at a time — a second tab's options replace the first's, which then
+fails as "started in another tab" and autofill starts over; linking a provider
+doesn't yet need the recent sign-in that adding a passkey does; the Signal API
+is Chromium-only today; and cross-device (hybrid) sign-in is left entirely to
+the browser, untested here.
 
 ### Account management
 
@@ -667,9 +829,9 @@ measures, and the rule each one exists for:
 - **The export is everything held, and no secrets.** `GET /api/auth/export`
   is one JSON file: the account, connected sign-ins (issuer and subject
   too — they're personal data, but sign nobody in), session metadata,
-  passkey names and dates when a passkeys table exists (found by probing,
-  since passkeys are built separately; only an allow-listed set of columns
-  is read), and every tree through `treeToNotation()`, so each one imports
+  passkey names and dates (only an allow-listed set of the `passkeys`
+  table's columns is read — never the key, credential ID, counter or
+  AAGUID), and every tree through `treeToNotation()`, so each one imports
   again as it is. Never the password hash, tokens or their hashes, or key
   material. `private, no-store`.
 - **Deletion clears the browser too**: `Clear-Site-Data: "cookies",
@@ -797,15 +959,20 @@ rate-limit counters. Details and per-suite notes are in `tests/README.md`.
   `tests/helpers/mock-oidc.js`, a small OIDC provider with knobs to misbehave
   (wrong iss, nonce, aud, expired, `alg: none`, unknown kid...);
   `account.test.js` covers account management and audits that every
-  reference to `users` cascades. The OAuth start throttle counts every
+  reference to `users` cascades; `passkeys.test.js` runs both WebAuthn
+  ceremonies against `tests/helpers/webauthn-authenticator.js`, a software
+  authenticator (ES256, Ed25519, RS256) with knobs to get each part wrong,
+  and `webauthn-lib.test.js` feeds `lib/webauthn.js` malformed CBOR. The OAuth start throttle counts every
   request from 127.0.0.1, so suites that fail flows on purpose each get their
   own server. `pwa.test.js` covers the manifest, the worker's script and
   rules, page and tree metadata (with hostile text in every field),
   robots.txt, the sitemap, the well-known URLs and the speculation rules.
 - **Browser suites** (`tests/*.test.js`, Playwright) cover CRUD and cycle
   rejection, import/export round trips, both layout modes, skill placement,
-  zoom/pan, dragging, keyboard and screen-reader behaviour, provider sign-in
-  the account page, and the installable app (offline included); each fails on unexpected console errors or CSP
+  zoom/pan, dragging, keyboard and screen-reader behaviour, provider sign-in,
+  passkeys (Chromium's virtual authenticator over CDP), the account page,
+  and the installable app (offline included); each fails on unexpected
+  console errors or CSP
   violations. `node tests/run-e2e.js` runs them all. Playwright is the one
   test dependency: install it outside `backend/package.json` (or use a
   global install with `NODE_PATH=$(npm root -g)`) so the app itself stays
