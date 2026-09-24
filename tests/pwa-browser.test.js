@@ -203,6 +203,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
     check('no console errors or CSP violations on any page', problems.length === 0, problems);
 
+    // A navigation answered with a redirect goes through the worker as the
+    // browser's own navigation-preload response, and is followed.
+    await page.goto(`${BASE}/.well-known/change-password`);
+    check(
+      '/.well-known/change-password lands on the account page’s password section',
+      page.url() === `${BASE}/account.html#account-password`,
+      page.url()
+    );
+
     // ---------- network first: an edit on disk shows on a plain reload ----------
     const write = (version, rgb) => {
       fs.writeFileSync(

@@ -51,8 +51,9 @@ const PAGES = `${PREFIX}pages-v1`;
 const DATA = `${PREFIX}data-v1`;
 const CURRENT = [SHELL, PAGES, DATA];
 
-// Pages and API reads each keep the most recent this many; the shell is a
-// fixed list. Every tree opened would otherwise add two entries for good.
+// Pages and API reads each keep the most recent this many; the shell only
+// ever holds the site's own static files, a set that doesn't grow with use.
+// Every tree opened would otherwise add two entries for good.
 const MAX_ENTRIES = 50;
 
 const OFFLINE_PAGE = '/offline.html';
@@ -84,6 +85,9 @@ const PRECACHE = [
   '/icons/icon-512.png',
   '/icons/apple-touch-icon.png',
   '/manifest.webmanifest',
+  // Named by every page's Speculation-Rules header, so a page opened
+  // offline asks for it too.
+  '/speculationrules.json',
 ];
 
 // Public data worth having before the first page that uses it is visited
