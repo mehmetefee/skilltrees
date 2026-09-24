@@ -28,14 +28,29 @@
          Both views start hidden; app.js shows the right one once it knows
          whether anyone is signed in, so neither flashes up for the wrong person. -->
     <div class="auth-card" id="sign-in-view" hidden>
+      <!-- Sign in with a passkey: shown by passkeys.js when the server has
+           passkeys on and this browser can use them. -->
+      <div id="passkey-sign-in" class="passkey-sign-in" hidden>
+        <button type="button" class="btn btn-provider btn-passkey" id="passkey-sign-in-button">Sign in with a passkey</button>
+      </div>
       <div id="oauth-providers" class="oauth-providers" hidden></div>
       <div id="oauth-divider" class="auth-divider" hidden><span>or</span></div>
 
       <form id="auth-form">
         <div class="field">
           <label for="auth-username">Username</label>
-          <input id="auth-username" type="text" maxlength="40" required autocomplete="username"
+          <!-- "webauthn" lets the browser offer passkeys in this field's
+               autofill (conditional mediation); passkeys.js swaps it out
+               while the form is for creating an account. -->
+          <input id="auth-username" type="text" maxlength="40" required autocomplete="username webauthn"
             autofocus placeholder="letters, numbers, dash or underscore" />
+        </div>
+        <!-- Creating an account: a passkey instead of a password, for the
+             username above. Shown by passkeys.js, in that mode only. -->
+        <div id="passkey-sign-up" class="passkey-sign-up" hidden>
+          <button type="button" class="btn btn-provider btn-passkey" id="passkey-sign-up-button">Create account with a passkey</button>
+          <p class="passkey-note">No password to remember: your device's screen lock, fingerprint or face signs you in.</p>
+          <div class="auth-divider"><span>or choose a password</span></div>
         </div>
         <div class="field">
           <label for="auth-password">Password</label>
@@ -74,7 +89,19 @@
         <div id="sign-in-methods-error" class="import-problems" role="alert" hidden></div>
       </section>
 
-      <!-- Passkeys: a section of its own goes here. -->
+      <!-- Passkeys: filled in by passkeys.js, and shown only when the server
+           has passkeys on. The id is what /.well-known/passkey-endpoints
+           points password managers at, so keep it. -->
+      <section class="account-section" id="account-passkeys" aria-labelledby="passkeys-heading" hidden>
+        <h2 id="passkeys-heading">Passkeys</h2>
+        <p class="account-section-intro">Sign in with your fingerprint, face or screen lock instead of a password. A passkey only works on this site, so it can't be phished or reused elsewhere.</p>
+        <ul class="sign-in-methods passkey-list" id="passkey-list"></ul>
+        <p class="passkey-empty" id="passkey-empty" hidden>No passkeys yet.</p>
+        <div id="passkey-error" class="import-problems" role="alert" hidden></div>
+        <div class="passkey-actions">
+          <button type="button" class="btn" id="passkey-add">Add a passkey</button>
+        </div>
+      </section>
 
       <!-- Change password, sessions and deleting the account: a section of its own goes here. -->
     </div>
@@ -82,6 +109,9 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <!-- Before app.js, so its listeners are in place before app.js decides
+       which view to show (the account:* events). -->
+  <script src="/passkeys.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

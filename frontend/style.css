@@ -2200,3 +2200,70 @@ a.auth-name:hover { color: var(--accent); text-decoration: underline; }
   .skip-link { border-color: CanvasText; }
   :focus-visible { outline-color: Highlight; }
 }
+
+/* ------------------------------------------------ account page: passkeys
+ *
+ * The passkey button on the sign-in card, the passkey option inside the
+ * sign-up form, and the "Passkeys" section of "Your account". The buttons
+ * are .btn-provider (a full-width block, like "Continue with ..."), and the
+ * list reuses .sign-in-methods, so this block only adds spacing, the rename
+ * form and the row actions.
+ */
+
+.passkey-sign-in[hidden],
+.passkey-sign-up[hidden],
+.passkey-empty[hidden],
+.passkey-list[hidden] { display: none; }
+
+/* Above the provider buttons, when there are any: the first way in offered. */
+.passkey-sign-in + .oauth-providers:not([hidden]) { margin-top: var(--space-2); }
+
+/* Inside the form, between the username and the password: the passkey for
+   the name just typed, then "or choose a password". */
+.passkey-sign-up { margin: 0 0 var(--space-4); }
+.passkey-sign-up .auth-divider { margin: var(--space-4) 0 0; }
+.passkey-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.passkey-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.passkey-actions { margin-top: var(--space-4); }
+.passkey-list + .passkey-empty + .import-problems,
+#account-passkeys .import-problems { margin: var(--space-4) 0 0; }
+
+.passkey-row-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Renaming happens in the row: the name becomes a field. */
+.passkey-rename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+.passkey-rename input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-base);
+}
+.passkey-rename input:focus { border-color: var(--accent); }
+
+@media (max-width: 520px) {
+  .passkey-item { flex-wrap: wrap; }
+  .passkey-row-actions { width: 100%; }
+}
