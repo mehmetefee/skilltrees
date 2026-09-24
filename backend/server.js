@@ -124,6 +124,20 @@ const PERMISSIONS_POLICY = [
 // upgrade-insecure-requests only on a secure request: on plain-http
 // localhost it would rewrite every subresource to an https:// that isn't
 // there.
+//
+// Trusted Types (W3C; CSP's require-trusted-types-for and trusted-types
+// directives): script-src decides which files may run, and this decides
+// what those files may hand to a DOM XSS sink — innerHTML and its
+// relatives, a script's src, a (service) worker's URL. A plain string is
+// refused there; only a value made by a policy named below gets through.
+// The pages build their markup as nodes and need no HTML policy at all, so
+// the one policy is frontend/trusted-types.js's service-worker-url, which
+// vouches for "/sw.js" and nothing else. No 'allow-duplicates' (a second
+// policy under the same name, made by whatever ran later, is refused) and
+// never "default". A new policy is named here and made in trusted-types.js;
+// tests/trusted-types.test.js checks the two lists match.
+const TRUSTED_TYPES_POLICIES = ['service-worker-url'];
+
 function pageCsp(secure) {
   const directives = [
     "default-src 'self'",
@@ -135,6 +149,8 @@ function pageCsp(secure) {
     "form-action 'self'",
     "frame-ancestors 'none'",
     "object-src 'none'",
+    "require-trusted-types-for 'script'",
+    `trusted-types ${TRUSTED_TYPES_POLICIES.join(' ')}`,
     'report-to csp-endpoint',
     `report-uri ${REPORTS_PATH}`,
   ];
@@ -149,8 +165,16 @@ function pageCsp(secure) {
 // default-src 'none', would therefore forbid the worker's own fetch() —
 // every request it makes on a page's behalf, and the precache — so /sw.js
 // alone gets this: same-origin fetches, nothing else. No script-src: it
-// imports no scripts and evaluates no strings. Registering it needs nothing
-// from the page's policy either: worker-src falls back to script-src 'self'.
+// imports no scripts and evaluates no strings. Registering it needs no
+// source list in the page's policy either: worker-src falls back to
+// script-src 'self'. What the page's policy does ask for is a
+// TrustedScriptURL rather than the string "/sw.js", which pwa.js gets from
+// the service-worker-url policy.
+//
+// No Trusted Types directives here. A worker has no DOM, and its sinks —
+// importScripts(), eval, string timers — are all governed by script-src,
+// which falls back to default-src 'none': each is refused outright whatever
+// it is handed, so a policy would have nothing left to vouch for.
 const WORKER_CSP = [
   "default-src 'none'",
   "connect-src 'self'",
