@@ -34,6 +34,23 @@ const {
 const PORT = process.env.PORT || 3001;
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 
+// PUBLIC_ORIGIN, the site's external origin ("https://skilltrees.example"),
+// reduced to a serialised origin, or null when unset or not a URL. Behind a
+// proxy that rewrites Host it is the only way to know what browsers will put
+// in Origin; unset, everything falls back to the Host header.
+const CONFIGURED_ORIGIN = (() => {
+  const raw = (process.env.PUBLIC_ORIGIN || '').trim();
+  if (!raw) return null;
+  try {
+    const origin = new URL(raw).origin;
+    if (origin !== 'null') return origin;
+  } catch {
+    // reported below
+  }
+  console.warn(`PUBLIC_ORIGIN "${logSafe(raw)}" is not an http(s) origin; ignoring it`);
+  return null;
+})();
+
 const db = openDb();
 
 // ---------- helpers ----------
@@ -236,6 +253,12 @@ function sendNotModified(res, headers) {
 // reused. Never rejects: a response that fails halfway is logged and its
 // connection dropped, because there is no status left to send.
 async function sendRepresentation(req, res, status, body, headers, opts = {}) {
+  // A handler that answers twice is a bug, but not one worth cutting off
+  // the first, already-correct answer for.
+  if (res.headersSent) {
+    console.error(`Response for ${logSafe(req.url)} was already sent; dropped a second ${status}`);
+    return;
+  }
   try {
     const compressible = isCompressible(headerValue(headers, 'Content-Type'));
     if (compressible) appendVary(res, 'Accept-Encoding');
@@ -1425,16 +1448,10 @@ function securityTxtConfig() {
 
   // Canonical (§2.5.2) names where the file officially lives; web URIs in
   // it MUST be https, so a plain-http origin (local development) gets none.
-  let canonical = null;
-  const rawOrigin = clean(process.env.PUBLIC_ORIGIN);
-  if (rawOrigin) {
-    try {
-      const origin = new URL(rawOrigin);
-      if (origin.protocol === 'https:') canonical = origin.origin + SECURITY_TXT_PATH;
-    } catch {
-      console.warn('[SECURITY.TXT] PUBLIC_ORIGIN is not a URL; leaving Canonical out');
-    }
-  }
+  const canonical =
+    CONFIGURED_ORIGIN && CONFIGURED_ORIGIN.startsWith('https://')
+      ? CONFIGURED_ORIGIN + SECURITY_TXT_PATH
+      : null;
   return { contacts, policy, canonical };
 }
 
@@ -1604,9 +1621,15 @@ async function serveStatic(req, res) {
     // compressed), let the browser start on what the page will ask for.
     // Only for a browser navigation: a 1xx before the real response is
     // legal HTTP/1.1, but plenty of non-browser clients mistake it for the
-    // final answer (RFC 8297 §3). Chromium acts on 103 only over HTTP/2 or
+    // final answer (RFC 8297 §3), and HTTP/1.0 has no 1xx at all (RFC 9110
+    // §15.2 forbids sending one). Chromium acts on 103 only over HTTP/2 or
     // later, so this pays off behind a proxy that forwards it.
-    if (isHtml && req.method === 'GET' && req.headers['sec-fetch-dest'] === 'document') {
+    const earlyHints =
+      isHtml &&
+      req.method === 'GET' &&
+      req.headers['sec-fetch-dest'] === 'document' &&
+      !(req.httpVersionMajor === 1 && req.httpVersionMinor === 0);
+    if (earlyHints) {
       res.writeEarlyHints({ link: [PRELOAD_STYLE, PRELOAD_FONT] });
     }
 
@@ -1735,6 +1758,8 @@ async function handleApi(req, res, urlPath) {
   // another site acting on someone's behalf. A missing Origin means a
   // non-browser caller (curl, a script), which carries no ambient cookie and
   // so can't be tricked this way. Safe methods change nothing and are exempt.
+  // PUBLIC_ORIGIN, when set, is accepted as well: behind a proxy that
+  // rewrites Host, it is what our own pages send.
   if (!SAFE_METHODS.has(req.method) && req.headers.origin) {
     let originHost = null;
     try {
@@ -1742,7 +1767,8 @@ async function handleApi(req, res, urlPath) {
     } catch (e) {
       originHost = null;
     }
-    if (originHost !== req.headers.host) {
+    const ours = originHost === req.headers.host || req.headers.origin === CONFIGURED_ORIGIN;
+    if (!ours) {
       return refuse(req, res, 403, 'Cross-site request refused.');
     }
   }

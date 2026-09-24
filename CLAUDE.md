@@ -28,7 +28,9 @@ Optional environment:
 - `PORT` (default 3001; `0` picks a free one) and `SKILLTREE_DB` (the
   database file; tests point it at a throwaway one).
 - `PUBLIC_ORIGIN` — the site's external origin, e.g.
-  `https://skilltrees.example`. Unset is fine.
+  `https://skilltrees.example`. Accepted as a same-site `Origin` by the CSRF
+  check (behind a proxy that rewrites `Host`, it's what browsers send) and
+  used for security.txt's `Canonical`. Unset is fine.
 - `SECURITY_CONTACT` — turns on `/.well-known/security.txt` (RFC 9116).
   One or more comma-separated `mailto:`, `https:` or `tel:` URIs (a bare
   address gets `mailto:`). Unset, the file is a 404: Contact is mandatory,
@@ -261,9 +263,10 @@ V3 session management, V4 access control) and **NIST SP 800-63B**, using only
   returning early would make it measurably faster and give the same answer away
   through timing.
 - **CSRF** (ASVS V4.2.2): SameSite=Lax, plus a state-changing request whose
-  `Origin` is present plays only if it matches the host. A missing `Origin`
-  means a non-browser caller, which carries no ambient cookie. Two more
-  layers below: Fetch Metadata, and the JSON-only rule for request bodies.
+  `Origin` is present plays only if it matches the host (or `PUBLIC_ORIGIN`).
+  A missing `Origin` means a non-browser caller, which carries no ambient
+  cookie. Two more layers below: Fetch Metadata, and the JSON-only rule for
+  request bodies.
 - **Fetch Metadata** (W3C, resource isolation): an `/api/` request marked
   `Sec-Fetch-Site: cross-site` is refused unless it is a top-level GET
   navigation (`navigate` + `document`) — which is what an OAuth provider

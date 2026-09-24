@@ -10,6 +10,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
+const net = require('node:net');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const { startServer } = require('../helpers/server');
@@ -524,6 +525,20 @@ test('a page navigation gets 103 Early Hints; other clients do not', async () =>
   assert.equal(script.informational.length, 0);
   const js = await raw(srv.base, '/app.js', { headers: { 'Sec-Fetch-Dest': 'document' } });
   assert.equal(js.informational.length, 0);
+
+  // HTTP/1.0 has no 1xx responses at all (RFC 9110 §15.2).
+  const url = new URL(srv.base);
+  const reply = await new Promise((resolve, reject) => {
+    const socket = net.connect(Number(url.port), url.hostname, () => {
+      socket.write('GET /tree.html HTTP/1.0\r\nHost: localhost\r\nSec-Fetch-Dest: document\r\n\r\n');
+    });
+    let text = '';
+    socket.on('data', (c) => (text += c.toString('latin1')));
+    socket.on('end', () => resolve(text));
+    socket.on('error', reject);
+  });
+  assert.match(reply, /^HTTP\/1\.1 200 OK\r\n/);
+  assert.doesNotMatch(reply, /103 Early Hints/);
 });
 
 // ---------- Fetch Metadata ----------
@@ -712,7 +727,7 @@ test('429 carries Retry-After and the RateLimit fields', async () => {
   }
 });
 
-test('security.txt is served only when a contact is configured', async () => {
+test('security.txt is served only when a contact is configured; PUBLIC_ORIGIN is honoured', async () => {
   assert.equal((await raw(srv.base, '/.well-known/security.txt')).status, 404);
 
   const configured = await startServer({
@@ -746,6 +761,19 @@ test('security.txt is served only when a contact is configured', async () => {
     const post = await raw(configured.base, '/.well-known/security.txt', { method: 'POST' });
     assert.equal(post.status, 405);
     assert.equal(post.headers.allow, 'GET, HEAD, OPTIONS');
+
+    // PUBLIC_ORIGIN also counts as our own Origin: behind a proxy that
+    // rewrites Host, it is what our pages send.
+    const fromSite = await raw(configured.base, '/api/auth/logout', {
+      method: 'POST',
+      headers: { Origin: 'https://skilltrees.example' },
+    });
+    assert.equal(fromSite.status, 200);
+    const fromElsewhere = await raw(configured.base, '/api/auth/logout', {
+      method: 'POST',
+      headers: { Origin: 'https://skilltrees.example.evil' },
+    });
+    assert.equal(fromElsewhere.status, 403);
   } finally {
     await configured.stop();
   }
