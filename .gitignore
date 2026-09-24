@@ -172,3 +172,8 @@ desktop.ini
 # ==========================================
 CLAUDE-SECURITY-*/
 .claude/
+
+# ==========================================
+# Probe files tests/pwa-browser.test.js writes into frontend/ (and removes)
+# ==========================================
+frontend/pwa-probe-*
