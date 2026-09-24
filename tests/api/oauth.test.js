@@ -119,6 +119,15 @@ function setCookieNamed(res, name) {
   return res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`));
 }
 
+// Waits for a line in the server's log (it arrives over the child's stdout,
+// separately from the HTTP response that prompted it).
+async function waitForLog(srv, pattern) {
+  for (let i = 0; i < 100 && !pattern.test(srv.logs.join('')); i++) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.match(srv.logs.join(''), pattern);
+}
+
 // The refusal has to be for the reason the test is about, not some earlier
 // check tripping by accident — so the server's own log line is checked too.
 // It arrives over the child's stdout, so give it a moment.
@@ -209,6 +218,48 @@ describe('with nothing configured', () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('clear-site-data'), '"cookies"');
     assert.equal((await carol.fetch('/api/auth/me')).data.user, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('a provider that cannot be used', () => {
+  test('unreachable: listed, but the start answers 503 and the log says why', async () => {
+    const nobody = `http://127.0.0.1:${await freePort()}`; // nothing listens here
+    const srv = await startOAuthServer({ OIDC_ISSUER: nobody });
+    try {
+      const res = await browser(srv).start('oidc');
+      assert.equal(res.status, 503);
+      assert.match(res.data.error, /not available right now/);
+      assert.equal(setCookieNamed(res, 'skilltree_oauth'), undefined, 'no flow was made');
+      await waitForLog(srv, /Test SSO is not reachable yet/);
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  test('a discovery document naming another issuer is not trusted', async () => {
+    // Configured with a trailing slash; the document says it without one.
+    const srv = await startOAuthServer({ OIDC_ISSUER: `${mock.issuer}/` });
+    try {
+      const res = await browser(srv).start('oidc');
+      assert.equal(res.status, 503);
+      await waitForLog(srv, /must match exactly/);
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  test('a provider without PKCE S256 is not used', async () => {
+    mock.set({ discovery: { code_challenge_methods_supported: ['plain'] } });
+    const srv = await startOAuthServer();
+    try {
+      const res = await browser(srv).start('oidc');
+      assert.equal(res.status, 503);
+      await waitForLog(srv, /does not support PKCE with S256/);
+    } finally {
+      await srv.stop();
+    }
   });
 });
 
