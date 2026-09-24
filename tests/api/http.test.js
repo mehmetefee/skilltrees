@@ -450,11 +450,14 @@ test('pages carry the full set of security headers', async () => {
     "script-src 'self'",
     "frame-ancestors 'none'",
     "object-src 'none'",
+    "require-trusted-types-for 'script'",
+    'trusted-types service-worker-url;',
     'report-to csp-endpoint',
     'report-uri /api/reports',
   ]) {
     assert.ok(csp.includes(directive), directive);
   }
+  assert.doesNotMatch(csp, /allow-duplicates|trusted-types[^;]*\bdefault\b/, 'one policy per name, and no default policy');
   assert.doesNotMatch(csp, /upgrade-insecure-requests/, 'not over plain http');
   assert.equal(h['reporting-endpoints'], 'csp-endpoint="/api/reports"');
   assert.equal(h['x-content-type-options'], 'nosniff');

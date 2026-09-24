@@ -176,6 +176,9 @@ test('every page links the manifest, the icons and the service worker, with the 
     assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest" \/>/, page);
     assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png" \/>/, page);
     assert.match(html, /<script src="\/pwa\.js" defer><\/script>/, page);
+    // The Trusted Types policies come first, and not deferred, so they
+    // exist before any script that could need one runs (pwa.js does).
+    assert.equal(/<script src=[^>]*>/.exec(html)[0], '<script src="/trusted-types.js">', page);
     assert.equal(metaContent(html, 'theme-color'), manifest.theme_color, page);
     assert.equal(metaContent(html, 'color-scheme'), 'light', page);
     assert.ok(metaContent(html, 'description').length > 20, page);
@@ -194,7 +197,7 @@ test('every page links the manifest, the icons and the service worker, with the 
   assert.equal(metaContent(offline, 'robots'), 'noindex');
   assert.match(offline, /<a class="skip-link" href="#main">/);
   assert.match(offline, /<main id="main"/);
-  assert.equal((offline.match(/<script /g) || []).length, 2, 'theme.js and pwa.js, nothing inline');
+  assert.equal((offline.match(/<script /g) || []).length, 3, 'trusted-types.js, theme.js and pwa.js, nothing inline');
   assert.doesNotMatch(offline, /<script>/);
 });
 
@@ -246,7 +249,9 @@ test('sw.js is JavaScript, no-cache, and runs under a CSP that lets it fetch fro
 
   const pwa = await raw(srv.base, '/pwa.js');
   assert.equal(pwa.status, 200);
-  assert.match(text(pwa), /navigator\.serviceWorker\.register\('\/sw\.js'/);
+  // Through the Trusted Types policy: the page's CSP refuses a plain string.
+  assert.match(text(pwa), /SkillTreeTrustedTypes\.serviceWorkerURL\('\/sw\.js'\)/);
+  assert.match(text(pwa), /navigator\.serviceWorker\.register\(script,/);
 });
 
 // The worker's lists, read by running sw.js against a stub `self` — the
@@ -266,7 +271,7 @@ test('everything the worker precaches exists (addAll is all or nothing)', async 
     assert.equal(res.status, 200, url);
   }
   // Every script a page loads is in the shell, so a saved page can run.
-  for (const page of ['/', '/tree.html', '/viewer.html']) {
+  for (const page of ['/', '/tree.html', '/viewer.html', '/offline.html']) {
     const html = text(await raw(srv.base, page));
     for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) {
       assert.ok(PRECACHE.includes(src), `${page} loads ${src}, which the worker should precache`);

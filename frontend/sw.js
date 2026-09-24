@@ -71,6 +71,9 @@ const PRECACHE = [
   '/viewer.html',
   OFFLINE_PAGE,
   '/style.css',
+  // Every page's first script, offline.html's included: without it pwa.js
+  // has no policy to register the worker with (Trusted Types).
+  '/trusted-types.js',
   '/theme.js',
   '/pwa.js',
   '/layout.js',

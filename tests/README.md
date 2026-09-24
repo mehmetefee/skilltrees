@@ -76,8 +76,8 @@ reporter, and watchers for console errors and for write requests.
 
 `BASE_URL=http://localhost:3001` aims a suite at a running server instead
 (all but `oauth-browser`, which needs its mock provider configured on the
-server it starts, and `passkeys-browser`, which needs `PUBLIC_ORIGIN` to be
-the very origin the browser is on). They delete the trees they create either way; the
+server it starts, and `passkeys-browser` and `trusted-types`, which need
+`PUBLIC_ORIGIN` to be the very origin the browser is on). They delete the trees they create either way; the
 accounts they sign up stay.
 The suites that use the example tree need it seeded there
 (`node backend/db/seed.js`), and the rate limits above apply — run them one or
@@ -112,6 +112,7 @@ auto-layout tree. Once it's decided, replace those SKIPs with the answer.
 | `passkeys-browser.test.js` | Passkeys in Chromium with a virtual authenticator attached over CDP (`WebAuthn.addVirtualAuthenticator`: CTAP2, internal, resident keys, user verification): sign-up with a passkey, the account page's Passkeys section (list, "only way in", add — including one the authenticator already holds, rename inline, remove with confirmation), "sign in again" for an old session, both Signal API calls (the authenticator really forgets the credential), signing in with the button and through autofill, a password sign-in with autofill pending, and a second pass without the Level 3 JSON helpers to exercise the base64url fallback. Picks a free port first, since `PUBLIC_ORIGIN` must be `http://localhost:<port>`. Fails on any console error or CSP violation except the refusals it provokes. |
 | `account-browser.test.js` | The account page's own sections in Chromium: ending another session and "sign out everywhere else", changing a password (a wrong one first), downloading your data, deleting the account through its dialog (Escape, a wrong name, a wrong password, then for real), and "sign in again" for an account without a password. Focus and live-region checks throughout; fails on any console error or CSP violation except the refusals it provokes. Starts its own server. |
 | `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. |
+| `trusted-types.test.js` | Trusted Types, which every page requires. Without a browser: the page CSP names exactly the policies `frontend/trusted-types.js` makes, none `default` and no `'allow-duplicates'`, and no frontend script hands a string to an HTML or script sink or makes a policy of its own. In Chromium, with titles, skill names, passkey names and import problems that are all hostile markup: the account page signed out and in (every section — sign-in methods, passkeys added, renamed and "removed", sessions, a wrong password, the download, the delete dialog, then deleting for real), the homepage signed in and out (the user chip, cards, search, the featured hero and its SVG markers, the scroll hint), the import dialog's problems, a tree page as owner (side panel, removing a link, link mode, the add-skill dialog) and as a visitor, a draft, the viewer empty and handed a tree (and its drop zone), and `offline.html` both directly and served by the worker offline. Every string must come out as text and there must be no CSP violation or console error anywhere. Then, on a page of its own, it asserts the header and that each sink throws on a plain string (`innerHTML`, even `''`, through `serviceWorker.register()` and a string timer) and is reported, and that the `service-worker-url` policy accepts `/sw.js` and nothing else and can't be joined by a default, duplicate or unlisted one. Picks a free port first, since `PUBLIC_ORIGIN` must be `http://localhost:<port>` for the passkey section; features a tree with `backend/db/feature.js`. |
 | `pwa-browser.test.js` | The installable app: the manifest parses with no errors and Chromium reports nothing stopping an install; the service worker takes control with navigation preload on; a tree visited online opens offline (page and data) and an unvisited page gets `offline.html`; an edit to a file on disk shows on a plain reload (network first); speculation rules accepted, a hovered tree link prefetched and a draft link not; no console errors or CSP violations. Starts its own server; uses a persistent browser profile, since Chromium never offers to install from an incognito-style context. |
 
 ### The service worker and these suites
@@ -154,7 +155,9 @@ that the right handlers exist.
 
 One caution: a few checks assert on *expected* console errors — a rejected
 import legitimately logs a 400 (three of them in `import-export`, plus the
-401 of a signed-out import), and so does the refused cycle in `core-crud`.
+401 of a signed-out import), and so does the refused cycle in `core-crud`;
+`trusted-types` provokes a page full of CSP violations on purpose, in a
+browser context of its own, and counts them separately.
 Those assertions are written to distinguish expected failures from
 unexpected ones, so don't "fix" them by asserting zero console output.
 

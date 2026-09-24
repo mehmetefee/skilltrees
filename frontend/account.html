@@ -16,11 +16,15 @@
 <meta property="og:description" content="Sign in to Skill Trees to make skill trees of your own." />
 <!-- canonical, og:url and og:image: absolute, so only with PUBLIC_ORIGIN. -->
 <!--@page-urls-->
+<script src="/trusted-types.js"></script>
 <script src="/theme.js"></script>
 <script src="/pwa.js" defer></script>
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <main id="main" tabindex="-1">
   <div class="container">
     <a class="back-link" href="/#browse">&larr; All trees</a>
 
@@ -219,6 +223,7 @@
       </section>
     </div>
   </div>
+  </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

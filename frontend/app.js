@@ -53,6 +53,38 @@ async function apiFetch(path, opts = {}) {
   return data;
 }
 
+// --- building markup ---
+//
+// Pages require Trusted Types (trusted-types.js), so innerHTML and the other
+// HTML sinks throw on a plain string — even an empty one — and there is no
+// policy that would turn one into markup. Everything shown is built as nodes
+// instead: text goes in as a text node and is never parsed, so a tree called
+// `<img src=x onerror=...>` is shown as exactly those characters. These two
+// keep that short:
+//
+//   buildElement('li', { className: 'panel-empty' }, 'Nothing yet.')
+//
+// Props are assigned as properties (className, href, title, id, type...);
+// `attrs` holds the ones set as attributes — role, aria-*, data-*. Children
+// are nodes or strings, appended in order. SVG takes everything as attributes:
+// its geometry properties are read-only animated values, not numbers.
+function buildElement(tag, props = {}, ...children) {
+  const { attrs = {}, ...properties } = props;
+  const node = Object.assign(document.createElement(tag), properties);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  node.append(...children);
+  return node;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function buildSvgElement(tag, attrs = {}, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  node.append(...children);
+  return node;
+}
+
 // --- theme switch ---
 //
 // The theme is whatever the switch says — the OS preference is not consulted
@@ -93,17 +125,25 @@ function renderAuthSlots() {
       : (location.pathname + location.search + (location.hash || ''));
     const next = encodeURIComponent(targetPath);
 
-    slot.innerHTML = signedInUser
-      ? `<div class="user-chip" title="Signed in as ${escapeHtml(signedInUser.username)}" aria-label="Signed in as ${escapeHtml(signedInUser.username)}">` +
-        `<span class="user-avatar" aria-hidden="true">${escapeHtml(signedInUser.username.charAt(0).toUpperCase())}</span>` +
-        `<a class="auth-name" href="/account.html" title="Your account">${escapeHtml(signedInUser.username)}</a>` +
-        `<button type="button" class="user-signout-btn" data-sign-out title="Sign out" aria-label="Sign out of ${escapeHtml(signedInUser.username)}">Sign out</button>` +
-        `</div>`
-      : `<a href="/account.html?next=${next}" class="btn btn-signin">Sign in</a>`;
-  }
+    if (!signedInUser) {
+      slot.replaceChildren(
+        buildElement('a', { href: `/account.html?next=${next}`, className: 'btn btn-signin' }, 'Sign in')
+      );
+      continue;
+    }
 
-  for (const btn of document.querySelectorAll('[data-sign-out]')) {
-    btn.addEventListener('click', async () => {
+    const name = signedInUser.username;
+    const signOut = buildElement(
+      'button',
+      {
+        type: 'button',
+        className: 'user-signout-btn',
+        title: 'Sign out',
+        attrs: { 'data-sign-out': '', 'aria-label': `Sign out of ${name}` },
+      },
+      'Sign out'
+    );
+    signOut.addEventListener('click', async () => {
       try {
         await apiFetch('/auth/logout', { method: 'POST' });
       } catch (e) {
@@ -111,6 +151,18 @@ function renderAuthSlots() {
       }
       window.location.reload();
     });
+    // No aria-label on the chip: it is a plain div with no role, which ARIA
+    // prohibits naming (ARIA 1.2, "generic"), and the name and button inside
+    // already say who is signed in. The tooltip stays for pointer users.
+    slot.replaceChildren(
+      buildElement(
+        'div',
+        { className: 'user-chip', title: `Signed in as ${name}` },
+        buildElement('span', { className: 'user-avatar', attrs: { 'aria-hidden': 'true' } }, name.charAt(0).toUpperCase()),
+        buildElement('a', { className: 'auth-name', href: '/account.html', title: 'Your account' }, name),
+        signOut
+      )
+    );
   }
 }
 
@@ -469,12 +521,6 @@ async function renderSignInMethods(user, providers) {
   }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str == null ? '' : String(str);
-  return div.innerHTML;
-}
-
 // An SVG path through a list of points, curved rather than kinked. Edges that
 // skip a column come with waypoints from layout.js routing them around what
 // sits in between; short ones are just the two endpoints and curve as before.
@@ -539,6 +585,17 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// An arrowhead for the end of an edge: the same <marker> the pages declare
+// statically in tree.html and viewer.html, built as nodes so a colour is only
+// ever an attribute's value.
+function arrowheadMarker(id, fill, points = '0 0.5, 6.5 3.5, 0 6.5') {
+  return buildSvgElement(
+    'marker',
+    { id, markerWidth: 7, markerHeight: 7, refX: 6, refY: 3.5, orient: 'auto', markerUnits: 'userSpaceOnUse' },
+    buildSvgElement('polygon', { points, fill })
+  );
+}
+
 function ensureArrowheadMarker(containerEl, colorHex) {
   const svg = containerEl.tagName && containerEl.tagName.toLowerCase() === 'svg'
     ? containerEl
@@ -548,26 +605,13 @@ function ensureArrowheadMarker(containerEl, colorHex) {
   const cleanHex = String(colorHex).replace(/[^a-zA-Z0-9]/g, '');
   const markerId = `arrowhead-dyn-${cleanHex}`;
 
-  let marker = svg.querySelector(`#${markerId}`);
-  if (!marker) {
+  if (!svg.querySelector(`#${markerId}`)) {
     let defs = svg.querySelector('defs');
     if (!defs) {
-      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      defs = buildSvgElement('defs');
       svg.insertBefore(defs, svg.firstChild);
     }
-    marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-    marker.setAttribute('id', markerId);
-    marker.setAttribute('markerWidth', '7');
-    marker.setAttribute('markerHeight', '7');
-    marker.setAttribute('refX', '6');
-    marker.setAttribute('refY', '3.5');
-    marker.setAttribute('orient', 'auto');
-    marker.setAttribute('markerUnits', 'userSpaceOnUse');
-    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    poly.setAttribute('points', '0 0, 7 3.5, 0 7');
-    poly.setAttribute('fill', colorHex);
-    marker.appendChild(poly);
-    defs.appendChild(marker);
+    defs.appendChild(arrowheadMarker(markerId, colorHex, '0 0, 7 3.5, 0 7'));
   }
   return `url(#${markerId})`;
 }
@@ -974,7 +1018,7 @@ async function loadTrees() {
   try {
     const trees = await apiFetch('/trees');
     allTrees = trees;
-    grid.innerHTML = '';
+    grid.replaceChildren();
     if (trees.length === 0) {
       empty.hidden = false;
       await loadFeatured(null);
@@ -984,18 +1028,19 @@ async function loadTrees() {
     empty.hidden = true;
     for (let i = 0; i < trees.length; i++) {
       const tree = trees[i];
-      const card = document.createElement('a');
-      card.className = 'tree-card';
+      const card = buildElement(
+        'a',
+        { className: 'tree-card', href: `/tree.html?id=${tree.id}` },
+        buildElement('h3', {}, tree.title),
+        buildElement('p', {}, tree.description || 'No description yet.'),
+        buildElement(
+          'div',
+          { className: 'meta' },
+          buildElement('span', {}, `${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}`),
+          buildElement('span', {}, `by ${tree.author} · ${timeAgo(tree.created_at)}`)
+        )
+      );
       card.style.animationDelay = `${Math.min(i * 35, 350)}ms`;
-      card.href = `/tree.html?id=${tree.id}`;
-      card.innerHTML = `
-        <h3>${escapeHtml(tree.title)}</h3>
-        <p>${escapeHtml(tree.description || 'No description yet.')}</p>
-        <div class="meta">
-          <span>${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}</span>
-          <span>by ${escapeHtml(tree.author)} &middot; ${timeAgo(tree.created_at)}</span>
-        </div>
-      `;
       grid.appendChild(card);
     }
     await loadFeatured(trees.find((t) => t.featured) || null);
@@ -1140,28 +1185,23 @@ function renderFeatured() {
   const hadFocus = featuredKeys ? featuredKeys.focusedId() : null;
 
   applyFeaturedViewBox();
-  svg.innerHTML = '';
+  svg.replaceChildren();
   if (featuredTree.skills.length === 0) return;
 
-  const ns = 'http://www.w3.org/2000/svg';
+  // Marker definitions for arrowheads: the hero's <svg> starts empty, so it
+  // gets the three that tree.html and viewer.html declare in their markup.
+  svg.appendChild(
+    buildSvgElement(
+      'defs',
+      {},
+      arrowheadMarker('arrowhead', 'var(--locked)'),
+      arrowheadMarker('arrowhead-accent', 'var(--accent)'),
+      arrowheadMarker('arrowhead-green', 'var(--unlocks)')
+    )
+  );
 
-  // Marker definitions for arrowheads
-  const defs = document.createElementNS(ns, 'defs');
-  defs.innerHTML = `
-    <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--locked)"></polygon>
-    </marker>
-    <marker id="arrowhead-accent" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--accent)"></polygon>
-    </marker>
-    <marker id="arrowhead-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--unlocks)"></polygon>
-    </marker>
-  `;
-  svg.appendChild(defs);
-
-  const edgesLayer = document.createElementNS(ns, 'g');
-  const nodesLayer = document.createElementNS(ns, 'g');
+  const edgesLayer = document.createElementNS(SVG_NS, 'g');
+  const nodesLayer = document.createElementNS(SVG_NS, 'g');
 
   // Auto layouts already reserved a row for every edge that skips a column.
   // Manual coordinates are wherever the author left them — or wherever the
@@ -1178,7 +1218,7 @@ function renderFeatured() {
     const from = featuredPositions.get(edge.prereq_skill_id);
     const to = featuredPositions.get(edge.skill_id);
     if (!from || !to) return;
-    const line = document.createElementNS(ns, 'path');
+    const line = document.createElementNS(SVG_NS, 'path');
     line.setAttribute(
       'd',
       edgePath([
@@ -1203,11 +1243,11 @@ function renderFeatured() {
   for (const skill of sortedSkills) {
     const p = featuredPositions.get(skill.id);
     if (!p) continue;
-    const g = document.createElementNS(ns, 'g');
+    const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('transform', `translate(${p.x}, ${p.y})`);
     g.dataset.skillId = skill.id;
 
-    const rect = document.createElementNS(ns, 'rect');
+    const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('width', NODE_W);
     rect.setAttribute('height', NODE_H);
     rect.setAttribute('rx', 10);
@@ -1216,7 +1256,7 @@ function renderFeatured() {
     rect.setAttribute('class', cls);
     g.appendChild(rect);
 
-    const label = document.createElementNS(ns, 'text');
+    const label = document.createElementNS(SVG_NS, 'text');
     label.setAttribute('x', 12);
     label.setAttribute('y', NODE_H / 2 + 5);
     label.setAttribute('class', 'node-label');
@@ -1418,13 +1458,15 @@ function setupFeaturedHero() {
       // Only touch the DOM when the state flips: this runs on every scroll
       // event, and rewriting a focused link's contents drops its focus ring.
       if (isPastHero === scrollHint.classList.contains('is-fixed')) return;
+      // The arrow is decoration; the words are the link's name.
+      const arrow = (glyph) => buildElement('span', { attrs: { 'aria-hidden': 'true' } }, glyph);
       if (isPastHero) {
         scrollHint.classList.add('is-fixed');
-        scrollHint.innerHTML = '<span aria-hidden="true">&uarr;</span> Featured tree';
+        scrollHint.replaceChildren(arrow('↑'), ' Featured tree');
         scrollHint.setAttribute('href', '#featured');
       } else {
         scrollHint.classList.remove('is-fixed');
-        scrollHint.innerHTML = 'Browse all trees <span aria-hidden="true">&darr;</span>';
+        scrollHint.replaceChildren('Browse all trees ', arrow('↓'));
         scrollHint.setAttribute('href', '#browse');
       }
     };
@@ -1583,23 +1625,24 @@ function setupSearch() {
 
   const close = () => {
     setOpen(false);
-    listbox.innerHTML = '';
+    listbox.replaceChildren();
     activeIndex = -1;
     matches = [];
   };
 
   const renderMatches = () => {
-    listbox.innerHTML = '';
+    listbox.replaceChildren();
     matches.forEach((tree, i) => {
-      const item = document.createElement('div');
-      item.id = optionId(i);
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
-      item.className = 'search-item' + (i === activeIndex ? ' active' : '');
-      item.innerHTML = `
-        <span class="search-item-title">${escapeHtml(tree.title)}</span>
-        <span class="search-item-meta">${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}</span>
-      `;
+      const item = buildElement(
+        'div',
+        {
+          id: optionId(i),
+          className: 'search-item' + (i === activeIndex ? ' active' : ''),
+          attrs: { role: 'option', 'aria-selected': i === activeIndex ? 'true' : 'false' },
+        },
+        buildElement('span', { className: 'search-item-title' }, tree.title),
+        buildElement('span', { className: 'search-item-meta' }, `${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}`)
+      );
       item.addEventListener('mousedown', (e) => {
         e.preventDefault(); // don't let the input lose focus/blur-close before navigation
         window.location.href = `/tree.html?id=${tree.id}`;
@@ -1697,16 +1740,19 @@ function setupImportModal() {
   if (!openBtns.length || !dialog) return;
   const modal = setupModalDialog(dialog);
 
+  // The server's problems quote the file being imported — names, slugs,
+  // whatever was pasted — so each one goes in as text, never as markup.
+  // (A loop rather than a spread: the list isn't capped, and a spread passes
+  // every item as an argument.)
   const showProblems = (heading, list) => {
-    problemsBox.innerHTML =
-      `<strong>${escapeHtml(heading)}</strong><ul>` +
-      list.map((p) => `<li>${escapeHtml(p)}</li>`).join('') +
-      '</ul>';
+    const items = buildElement('ul');
+    for (const p of list) items.append(buildElement('li', {}, p));
+    problemsBox.replaceChildren(buildElement('strong', {}, heading), items);
     problemsBox.hidden = false;
   };
   const clearProblems = () => {
     problemsBox.hidden = true;
-    problemsBox.innerHTML = '';
+    problemsBox.replaceChildren();
   };
 
   // However it closes — Cancel, Escape, a click on the backdrop — it opens

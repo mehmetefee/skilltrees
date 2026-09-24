@@ -361,7 +361,7 @@ function render() {
       ? routes
       : SkillTreeLayout.routeAroundNodes(positions, currentTree.edges);
 
-  edgesLayer.innerHTML = '';
+  edgesLayer.replaceChildren();
   currentTree.edges.forEach((edge, index) => {
     const from = positions.get(edge.from);
     const to = positions.get(edge.to);
@@ -383,7 +383,7 @@ function render() {
 
   // Rebuilding the layer destroys whichever node had focus; note it first.
   const refocusId = graphKeys.focusedId();
-  nodesLayer.innerHTML = '';
+  nodesLayer.replaceChildren();
   const sortedSkills = currentTree.skills.slice().sort((a, b) => {
     if (a.id === draggingSkillId) return 1;
     if (b.id === draggingSkillId) return -1;
@@ -660,19 +660,19 @@ function openSidePanel(skill) {
   document.getElementById('panel-desc').textContent = skill.description || 'No description.';
 
   const prereqList = document.getElementById('panel-prereqs');
-  prereqList.innerHTML = '';
+  prereqList.replaceChildren();
   const prereqEdges = currentTree.edges.filter((e) => e.to === skill.id);
   if (prereqEdges.length === 0) {
-    prereqList.innerHTML = '<li class="panel-empty">None — this is a starting skill.</li>';
+    prereqList.append(buildElement('li', { className: 'panel-empty' }, 'None — this is a starting skill.'));
   } else {
     for (const edge of prereqEdges) prereqList.appendChild(panelLinkRow(skill, edge.from));
   }
 
   const unlockList = document.getElementById('panel-unlocks');
-  unlockList.innerHTML = '';
+  unlockList.replaceChildren();
   const unlockEdges = currentTree.edges.filter((e) => e.from === skill.id);
   if (unlockEdges.length === 0) {
-    unlockList.innerHTML = '<li class="panel-empty">Nothing yet.</li>';
+    unlockList.append(buildElement('li', { className: 'panel-empty' }, 'Nothing yet.'));
   } else {
     for (const edge of unlockEdges) unlockList.appendChild(panelLinkRow(skill, edge.to));
   }
@@ -684,20 +684,19 @@ function openSidePanel(skill) {
 }
 
 function setupDropZone() {
-  const dropOverlay = document.createElement('div');
-  dropOverlay.className = 'drop-zone-overlay';
   // Feedback for a drag in progress, which only a pointer can start; the same
   // file can be opened by keyboard with "Open JSON" or the dialog.
-  dropOverlay.setAttribute('aria-hidden', 'true');
-  dropOverlay.innerHTML = `
-    <div class="drop-zone-box">
-      <div style="font-size: 36px; margin-bottom: 12px;">📂</div>
-      <div>Drop skill tree JSON to open</div>
-      <div style="font-size: 13px; color: var(--text-muted); font-weight: normal; margin-top: 6px;">
-        Supports valid Skill Tree JSON files
-      </div>
-    </div>
-  `;
+  const dropOverlay = buildElement(
+    'div',
+    { className: 'drop-zone-overlay', attrs: { 'aria-hidden': 'true' } },
+    buildElement(
+      'div',
+      { className: 'drop-zone-box' },
+      buildElement('div', { className: 'drop-zone-icon' }, '📂'),
+      buildElement('div', {}, 'Drop skill tree JSON to open'),
+      buildElement('div', { className: 'drop-zone-hint' }, 'Supports valid Skill Tree JSON files')
+    )
+  );
   document.body.appendChild(dropOverlay);
 
   let dragCounter = 0;
