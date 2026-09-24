@@ -8,17 +8,33 @@
 //   const alice = await srv.signup('alice');  // { cookie, user, fetch }
 //   await alice.fetch('/api/trees', { method: 'POST', body: { title: 'x' } });
 //   await srv.stop();
+//
+// `startServer({ seed: true })` first runs backend/db/seed.js against the
+// throwaway database, for suites that need the example tree ("Home Bread
+// Baking": nine skills, made before accounts, so nobody owns it).
 
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
 const SERVER = path.join(__dirname, '..', '..', 'backend', 'server.js');
+const SEED = path.join(__dirname, '..', '..', 'backend', 'db', 'seed.js');
 
-async function startServer({ env = {}, timeoutMs = 15000 } = {}) {
+async function startServer({ env = {}, timeoutMs = 15000, seed = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skilltree-test-'));
   const dbPath = path.join(dir, 'test.db');
+  if (seed) {
+    try {
+      execFileSync(process.execPath, ['--no-warnings', SEED], {
+        env: { ...process.env, SKILLTREE_DB: dbPath, ...env },
+        stdio: 'pipe',
+      });
+    } catch (e) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      throw new Error(`seeding the test database failed:\n${e.stdout || ''}${e.stderr || e.message}`);
+    }
+  }
   const child = spawn(process.execPath, ['--no-warnings', SERVER], {
     env: { ...process.env, PORT: '0', SKILLTREE_DB: dbPath, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
