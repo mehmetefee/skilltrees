@@ -3,9 +3,26 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- For /tree.html?id=N, serveStatic() replaces everything between these
+     two markers with that tree's title, description, Open Graph tags and
+     schema.org JSON-LD (lib/meta.js). A draft or an unknown id keeps this. -->
+<!--@tree-meta-->
 <title>Skill Tree</title>
+<meta name="description" content="A skill tree on Skill Trees: a map of how learning one skill makes you ready for the next." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Skill Tree" />
+<meta property="og:description" content="A map of how learning one skill makes you ready for the next." />
+<!--/@tree-meta-->
+<meta name="theme-color" content="#f6f8fa" />
+<meta name="color-scheme" content="light" />
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta property="og:site_name" content="Skill Trees" />
+<!-- canonical, og:url and og:image: absolute, so only with PUBLIC_ORIGIN. -->
+<!--@page-urls-->
 <script src="/theme.js"></script>
+<script src="/pwa.js" defer></script>
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>

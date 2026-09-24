@@ -1755,6 +1755,18 @@ function setupImportModal() {
       showProblems('Import failed.', [err.message]);
     }
   });
+
+  // /#import opens the dialog straight away: it is the installed app's
+  // "Import" shortcut (manifest.webmanifest), and a link anyone can share.
+  // Through the button, so focus goes back to it on close. The hash is
+  // dropped once used, so a reload or Back doesn't open it again.
+  const openFromHash = () => {
+    if (location.hash !== '#import') return;
+    history.replaceState(null, '', location.pathname + location.search);
+    openBtns[0].click();
+  };
+  window.addEventListener('hashchange', openFromHash);
+  openFromHash();
 }
 
 setupThemeToggle(); // every page carries the switch

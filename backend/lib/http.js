@@ -38,6 +38,7 @@ function isCompressible(contentType) {
     type.startsWith('text/') ||
     type === 'application/json' ||
     type === 'application/javascript' ||
+    type === 'application/xml' || // the sitemap
     type === 'image/svg+xml' ||
     type.endsWith('+json') ||
     type.endsWith('+xml')

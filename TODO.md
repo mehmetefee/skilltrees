@@ -123,3 +123,37 @@ each for a reason:
   published lists; a full corpus is a data file or an outbound call to a
   k-anonymity range API — a third party learning when people change
   passwords.
+
+## Installable app, offline, search metadata: deferred
+The manifest, the network-first service worker, page metadata, robots.txt,
+the sitemap and the well-known URLs are in (CLAUDE.md, "Installable app,
+offline reading and search metadata"). Left for later, each for a reason:
+
+- **`trees.updated_at`.** Would give the sitemap an honest `lastmod` (it
+  uses `created_at` now), tree pages a `Last-Modified` (they send none, so
+  a crawler sending only `If-Modified-Since` always gets a 200), and JSON-LD
+  a `dateModified`. Needs a migration and every write route to touch it,
+  skills and links included.
+- **A sitemap index** once there are more than 50,000 trees. The sitemap
+  stops at the protocol's cap, keeping the newest.
+- **Editing offline.** Queuing writes (Background Sync) would mean replaying
+  them later against checks — ownership, cycles — that may fail by then,
+  with nobody there to see why. Offline stays read-only.
+- **A timeout on network-first.** On a connection that is up but hopeless
+  ("lie-fi"), a page waits for the browser to give up before the cached copy
+  is used. A timeout would fall back sooner, at the cost of serving a stale
+  page to someone who was merely on a slow line — which is exactly what the
+  network-first rule exists to prevent.
+- **The static routing API** (`InstallEvent.addRoutes()`) could send
+  `/api/auth/*` straight to the network without starting the worker at all.
+  Chromium only so far; the fetch handler's rule does the same everywhere.
+- **A preview image per tree** (a drawing of the graph as `og:image`). Needs
+  rendering on the server, which means a dependency or a lot of SVG-to-PNG
+  code; every page shares the one social card for now.
+- **The tree's title in the page body, server-side.** Only the `<head>` is
+  filled in; a crawler that doesn't run script sees the title there and in
+  JSON-LD, but not in the visible heading.
+- **`share_target` and `file_handlers` in the manifest**, so the installed
+  app could receive a shared `.json` or open one from the file manager into
+  the import dialog. `share_target` with a file needs the worker to accept a
+  POST, which it deliberately never intercepts today.

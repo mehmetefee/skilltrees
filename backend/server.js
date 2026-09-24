@@ -10,6 +10,7 @@ const { promisify } = require('node:util');
 const { openDb } = require('./db/init');
 const { hasControlChars, logSafe, stripControlChars } = require('./lib/text');
 const oauth = require('./lib/oauth');
+const meta = require('./lib/meta');
 const {
   mediaType,
   isCompressible,
@@ -139,6 +140,23 @@ function pageCsp(secure) {
   if (secure) directives.push('upgrade-insecure-requests');
   return directives.join('; ');
 }
+
+// The service worker's CSP. A worker is governed by the policy delivered
+// with its own script, not by the page that registered it (HTML Standard,
+// "run a worker": the worker's policy container is initialised from its
+// script's response). The policy every non-page response gets,
+// default-src 'none', would therefore forbid the worker's own fetch() —
+// every request it makes on a page's behalf, and the precache — so /sw.js
+// alone gets this: same-origin fetches, nothing else. No script-src: it
+// imports no scripts and evaluates no strings. Registering it needs nothing
+// from the page's policy either: worker-src falls back to script-src 'self'.
+const WORKER_CSP = [
+  "default-src 'none'",
+  "connect-src 'self'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+  `report-uri ${REPORTS_PATH}`,
+].join('; ');
 
 // Sent on every response: the dispatcher sets these before routing, so a
 // response written any other way — a redirect built with res.writeHead, a
@@ -2440,20 +2458,103 @@ function securityTxtBody(now = new Date()) {
 
 const READ_ONLY_ALLOW = 'GET, HEAD, OPTIONS';
 
+// For a generated resource that only reads: OPTIONS says what it allows
+// (RFC 9110 §9.3.7), anything else but GET/HEAD is 405 with Allow
+// (§15.5.6). Returns true when it has answered.
+function answeredReadOnly(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, { Allow: READ_ONLY_ALLOW });
+    res.end();
+    return true;
+  }
+  if (!isGetLike(req)) {
+    sendText(res, 405, { Allow: READ_ONLY_ALLOW, ...(requestHasBody(req) ? { Connection: 'close' } : {}) });
+    return true;
+  }
+  return false;
+}
+
 function serveSecurityTxt(req, res) {
   const body = securityTxtBody();
   if (body === null) return sendText(res, 404);
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, { Allow: READ_ONLY_ALLOW });
-    return res.end();
-  }
-  if (!isGetLike(req)) return sendText(res, 405, { Allow: READ_ONLY_ALLOW });
+  if (answeredReadOnly(req, res)) return;
   // §3: text/plain with charset=utf-8.
   return sendRepresentation(req, res, 200, Buffer.from(body), {
     'Content-Type': 'text/plain; charset=utf-8',
     'Cache-Control': 'no-cache',
   });
 }
+
+// ---------- robots.txt, the sitemap, and the other well-known URLs ----------
+//
+// Generated rather than static, because each depends on PUBLIC_ORIGIN or on
+// the database. The text itself comes from lib/meta.js; these only choose
+// between it and a 404, and send it through sendRepresentation like
+// everything else (ETag, 304, compression, HEAD).
+
+// RFC 9309. Present whatever the configuration: without PUBLIC_ORIGIN it
+// just has no Sitemap line.
+function serveRobotsTxt(req, res) {
+  if (answeredReadOnly(req, res)) return;
+  return sendRepresentation(req, res, 200, Buffer.from(meta.robotsTxt(CONFIGURED_ORIGIN)), {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-cache',
+  });
+}
+
+// sitemaps.org. Every <loc> must be an absolute URL, and the only trustworthy
+// source of one is PUBLIC_ORIGIN — Host is whatever the requester sent, and
+// a sitemap built from it would let anyone file our pages under their own
+// domain in whatever crawler fetched it. Unset, there is no sitemap: 404.
+// Newest trees first, so if the protocol's 50,000-URL cap is ever reached it
+// is long-known pages that drop out, not the ones a crawler has yet to find.
+function serveSitemap(req, res) {
+  if (!CONFIGURED_ORIGIN) return sendText(res, 404);
+  if (answeredReadOnly(req, res)) return;
+  const trees = db
+    .prepare('SELECT id, created_at FROM trees ORDER BY created_at DESC, id DESC LIMIT ?')
+    .all(meta.MAX_SITEMAP_URLS - 1);
+  return sendRepresentation(req, res, 200, Buffer.from(meta.sitemapXml(CONFIGURED_ORIGIN, trees)), {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'no-cache',
+  });
+}
+
+// W3C "A Well-Known URL for Changing Passwords": a password manager that
+// knows someone's password is weak or leaked sends them here. The spec asks
+// for a temporary redirect (302, 303 or 307) to the real page, and forbids
+// serving the page at the well-known URL itself (RFC 8615 §1.1). A relative
+// Location is fine (RFC 9110 §10.2.2), so this works on any host.
+const CHANGE_PASSWORD_PAGE = '/account.html#account-password';
+
+function serveChangePassword(req, res) {
+  if (answeredReadOnly(req, res)) return;
+  res.writeHead(302, { Location: CHANGE_PASSWORD_PAGE, 'Cache-Control': 'no-cache', 'Content-Length': 0 });
+  res.end();
+}
+
+// W3C "A Well-Known URL for Relying Party Passkey Endpoints": 200 and
+// application/json, never a redirect (the spec says so outright). Its URLs
+// have to be absolute (see passkeyEndpoints() in lib/meta.js), so without
+// PUBLIC_ORIGIN there is nothing correct to say: 404.
+function servePasskeyEndpoints(req, res) {
+  if (!CONFIGURED_ORIGIN) return sendText(res, 404);
+  if (answeredReadOnly(req, res)) return;
+  return sendRepresentation(req, res, 200, Buffer.from(JSON.stringify(meta.passkeyEndpoints(CONFIGURED_ORIGIN))), {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
+  });
+}
+
+// Paths answered by code rather than by a file, checked before the static
+// files. Exact matches on the raw path.
+const GENERATED = new Map([
+  [SECURITY_TXT_PATH, serveSecurityTxt],
+  ['/.well-known/change-password', serveChangePassword],
+  ['/.well-known/passkey-endpoints', servePasskeyEndpoints],
+  ['/robots.txt', serveRobotsTxt],
+  ['/sitemap.xml', serveSitemap],
+]);
 
 // ---------- static file serving (frontend) ----------
 
@@ -2484,13 +2585,62 @@ const MIME = {
 // the revalidation a 304 of a couple of hundred bytes. The favicon used to be
 // no-store, which re-downloaded it on every load; the pages already bust it
 // with ?v=N when it changes, and no-cache gets the same freshness for a 304.
+//
+// The service worker (/sw.js) is no-cache like any script, which is also
+// what the Service Workers spec wants: an update check must see the current
+// file, and browsers cap a worker script's max-age at 24 hours anyway.
 function staticCacheControl(ext) {
   return ext === '.woff2' ? 'public, max-age=31536000, immutable' : 'no-cache';
 }
 
+// The one script that gets a CSP of its own (WORKER_CSP).
+const SERVICE_WORKER_PATH = '/sw.js';
+
+// Files whose type their extension doesn't settle. The speculation rules
+// file is JSON, but a browser only accepts a rule set fetched through the
+// Speculation-Rules header when it is served as
+// application/speculationrules+json (HTML Standard, speculative loading).
+const SPECULATION_RULES_PATH = '/speculationrules.json';
+const TYPE_BY_PATH = {
+  [SPECULATION_RULES_PATH]: 'application/speculationrules+json',
+};
+
+// A page's bytes depend on its file and on PUBLIC_ORIGIN (the absolute URLs
+// filled into its <head>), and the second can only change with a restart. So
+// the page was last modified no later than whichever is newer — which keeps
+// If-Modified-Since honest for crawlers that send only that.
+const STARTED_AT_MS = Date.now();
+
+// The tree a tree page is showing, for the metadata in its <head>: the row,
+// how many skills it has, and the first few names (JSON-LD's `teaches`).
+// The id is read exactly as tree.js reads it (the first `id` parameter);
+// anything that isn't a tree gets null, and with it the generic page — the
+// script then says "not found" as it always has. Public data only: nothing
+// here depends on who is asking, which is what lets the service worker
+// cache the result (see frontend/sw.js).
+function treeForPage(url) {
+  const q = url.indexOf('?');
+  if (q === -1) return null;
+  const treeId = parseId(new URLSearchParams(url.slice(q + 1)).get('id'));
+  if (!treeId) return null;
+  const tree = db
+    .prepare('SELECT id, title, description, author, created_at FROM trees WHERE id = ?')
+    .get(treeId);
+  if (!tree) return null;
+  const skillCount = db.prepare('SELECT COUNT(*) AS n FROM skills WHERE tree_id = ?').get(treeId).n;
+  const skillNames = db
+    .prepare('SELECT name FROM skills WHERE tree_id = ? ORDER BY id LIMIT ?')
+    .all(treeId, meta.MAX_TAUGHT)
+    .map((r) => r.name);
+  return { tree, skillCount, skillNames };
+}
+
 // Strong ETags for static files, keyed by path + mtime + size, so a file is
 // hashed once per version rather than once per request. A 304 then needs
-// only a stat: the file isn't read at all.
+// only a stat: the file isn't read at all. For a page it is the ETag (and
+// length) of the page as sent, markers filled in — the same for every
+// request while the file and the configuration stay the same. A page
+// showing a tree is never memoised; see serveStatic().
 const etagCache = new LruCache({ maxEntries: 500, maxBytes: Infinity });
 
 // Resources every page needs before it can paint: the stylesheet, and the
@@ -2553,36 +2703,56 @@ async function serveStatic(req, res) {
 
     const ext = path.extname(fullPath);
     const isHtml = ext === '.html';
+    // The file's own path under frontend/, whatever spelling reached it
+    // ("/./sw.js" is /sw.js), for the handful of files treated specially.
+    const pagePath = '/' + path.relative(FRONTEND_DIR, fullPath).split(path.sep).join('/');
     // Set on the response rather than passed to writeHead, so a 304 carries
     // the page's own CSP too: a browser folds a 304's headers into the copy
     // it stored, and the dispatcher's default is the API's default-src 'none'.
     for (const [k, v] of Object.entries(securityHeaders(isHtml, req))) res.setHeader(k, v);
+    if (pagePath === SERVICE_WORKER_PATH) res.setHeader('Content-Security-Policy', WORKER_CSP);
+
+    // tree.html?id=N names its tree in its <head> (title, description, Open
+    // Graph, JSON-LD). That makes the page's bytes depend on the database,
+    // so it skips the memo below, and has no Last-Modified: the tree has no
+    // modification time to give it (TODO.md), and the file's would let an
+    // If-Modified-Since answer 304 to a tree renamed since. Its ETag is a
+    // hash of the page as sent, so a rename is a new ETag all the same.
+    const treeMeta = pagePath === '/tree.html' ? treeForPage(req.url) : null;
 
     const headers = {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Content-Type': TYPE_BY_PATH[pagePath] || MIME[ext] || 'application/octet-stream',
       'Cache-Control': staticCacheControl(ext),
-      'Last-Modified': stat.mtime.toUTCString(),
     };
-    // The same preload on the 200, for the benefit of anything that reads
-    // it there — a CDN that turns a page's Link headers into its own Early
-    // Hints, or a browser the 103 never reached. The font only: the
-    // stylesheet is in the first bytes of every page anyway, and preloading
-    // it from the page's own response made Chromium 141 fetch it twice and
-    // warn that the preload went unused.
-    if (isHtml) headers.Link = PRELOAD_FONT;
+    const modifiedMs = isHtml ? Math.max(stat.mtimeMs, STARTED_AT_MS) : stat.mtimeMs;
+    if (!treeMeta) headers['Last-Modified'] = new Date(modifiedMs).toUTCString();
+    if (isHtml) {
+      // The same preload on the 200, for the benefit of anything that reads
+      // it there — a CDN that turns a page's Link headers into its own Early
+      // Hints, or a browser the 103 never reached. The font only: the
+      // stylesheet is in the first bytes of every page anyway, and
+      // preloading it from the page's own response made Chromium 141 fetch
+      // it twice and warn that the preload went unused.
+      headers.Link = PRELOAD_FONT;
+      // Speculation Rules (HTML Standard): the rule set that lets the
+      // browser prefetch a tree page someone is about to open. A header
+      // rather than an inline <script type="speculationrules">, which the
+      // CSP would have to allow with 'inline-speculation-rules'.
+      headers['Speculation-Rules'] = `"${SPECULATION_RULES_PATH}"`;
+    }
 
     const versionKey = `${fullPath}\0${stat.mtimeMs}\0${stat.size}`;
     const compressible = isCompressible(headers['Content-Type']);
     if (compressible) appendVary(res, 'Accept-Encoding');
-    const coding =
-      compressible && stat.size >= MIN_COMPRESS_BYTES
-        ? negotiateEncoding(req.headers['accept-encoding'])
-        : 'identity';
+    // The coding sendRepresentation() will choose for a body of this length.
+    const codingFor = (length) =>
+      compressible && length >= MIN_COMPRESS_BYTES ? negotiateEncoding(req.headers['accept-encoding']) : 'identity';
 
     // Answer a conditional request from the memo, without reading the file.
-    let etag = etagCache.get(versionKey);
-    if (etag && isNotModified(req, etagForCoding(etag, coding), stat.mtimeMs)) {
-      return sendNotModified(res, { ...headers, ETag: etagForCoding(etag, coding) });
+    const memo = treeMeta ? undefined : etagCache.get(versionKey);
+    if (memo) {
+      const tag = etagForCoding(memo.etag, codingFor(memo.length));
+      if (isNotModified(req, tag, modifiedMs)) return sendNotModified(res, { ...headers, ETag: tag });
     }
 
     // RFC 8297 Early Hints: while the page is read (and perhaps
@@ -2601,16 +2771,31 @@ async function serveStatic(req, res) {
       res.writeEarlyHints({ link: [PRELOAD_STYLE, PRELOAD_FONT] });
     }
 
-    const data = await file.readFile();
+    let body = await file.readFile();
+    // Pages have their metadata markers filled in (lib/meta.js): absolute
+    // URLs when PUBLIC_ORIGIN is set, and on a tree page the tree's own
+    // title and description. Everything inserted is escaped for where it
+    // lands; the file on disk is never changed.
+    if (isHtml) {
+      body = Buffer.from(
+        meta.renderPage(body.toString('utf8'), { pagePath, origin: CONFIGURED_ORIGIN, tree: treeMeta })
+      );
+    }
+    // A tree page is built per request: its own ETag from its own bytes,
+    // compressed at the per-request level, and not memoised — a crawler
+    // walking every tree would otherwise churn the memo for nothing.
+    if (treeMeta) return await sendRepresentation(req, res, 200, body, headers);
+
+    let etag = memo && memo.etag;
     if (!etag) {
-      etag = etagOf(data);
+      etag = etagOf(body);
       // A new version of the file makes the old one's memos dead weight.
       compressedCache.deletePrefix(`${fullPath}\0`);
-      etagCache.set(versionKey, etag);
+      etagCache.set(versionKey, { etag, length: body.length });
     }
-    return await sendRepresentation(req, res, 200, data, headers, {
+    return await sendRepresentation(req, res, 200, body, headers, {
       etag,
-      mtimeMs: stat.mtimeMs,
+      mtimeMs: modifiedMs,
       cacheKey: versionKey,
     });
   } finally {
@@ -2826,7 +3011,8 @@ const server = http.createServer(
       }
       const urlPath = req.url.split('?')[0];
       if (urlPath.startsWith('/api/')) return await handleApi(req, res, urlPath);
-      if (urlPath === SECURITY_TXT_PATH) return await serveSecurityTxt(req, res);
+      const generated = GENERATED.get(urlPath);
+      if (generated) return await generated(req, res);
       return await serveStatic(req, res);
     } catch (e) {
       console.error(e);
