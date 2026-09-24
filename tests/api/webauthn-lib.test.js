@@ -278,8 +278,8 @@ describe('the ceremonies', () => {
     refused(() => register(auth, { fmt: 'none', attStmt: new Map([['sig', Buffer.alloc(8)]]) }), /none/);
     refused(() => register(auth, { clientExtensionResults: { credProps: { rk: false } } }), /discoverable/);
     const other = crypto.randomBytes(16).toString('base64url');
-    // Over 1023 bytes (§5.8.3): refused as the browser reports it, and as the
-    // authenticator data carries it.
+    // Over 1023 bytes, the most a credential ID may be: refused as the
+    // browser reports it, and as the authenticator data carries it.
     malformed(() => register(auth, { credentialId: crypto.randomBytes(1024) }), /too long/);
     refused(() => register(auth, { credentialId: crypto.randomBytes(1024), idOverride: other, rawIdOverride: other }), /1024 bytes/);
     malformed(() => register(auth, { idOverride: other }), /differ/);

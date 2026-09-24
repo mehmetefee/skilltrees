@@ -8,7 +8,7 @@
 //   - W3C Web Authentication Level 3 (a Recommendation since 25 August 2026):
 //     §7.1 "Registering a New Credential" and §7.2 "Verifying an
 //     Authentication Assertion", check by check; §6.1 for authenticator data;
-//     §5.8.1 for the client data; §6.5.4 for attestation "none".
+//     §5.8.1 for the client data; §8.7 for attestation "none".
 //   - CTAP 2.2 §8 "Message Encoding": the CBOR an authenticator produces is a
 //     small, definite-length subset, and anything outside it is refused
 //     rather than interpreted.
@@ -30,7 +30,7 @@ const crypto = require('node:crypto');
 const net = require('node:net');
 const { parsePublicOrigin } = require('./oauth');
 
-// The browser-facing name of the relying party (§5.4.1 rp.name).
+// The browser-facing name of the relying party (§5.4, rp.name).
 const RP_NAME = 'Skill Trees';
 
 // Algorithms we ask for, in order of preference (§5.4 pubKeyCredParams):
@@ -75,7 +75,10 @@ function configurePasskeys(env) {
   if (!origin) return off(`Passkeys are OFF: ${problem}.`);
   const rpId = new URL(origin).hostname;
   if (net.isIP(rpId.replace(/^\[|\]$/g, ''))) {
-    return off('Passkeys are OFF: PUBLIC_ORIGIN names an IP address, which WebAuthn does not accept as an RP ID. Use a domain name (or localhost).');
+    return off(
+      'Passkeys are OFF: PUBLIC_ORIGIN names an IP address, which WebAuthn does not accept ' +
+        'as an RP ID. Use a domain name (or localhost).'
+    );
   }
   return {
     enabled: true,
@@ -374,11 +377,11 @@ function publicKeyFromSpki(spki) {
   return crypto.createPublicKey({ key: spki, format: 'der', type: 'spki' });
 }
 
-// §6.3.3 / §7.2: the signature is over authenticatorData
-// followed by SHA-256(clientDataJSON). ES256 signatures are ASN.1 DER here
-// (§6.5.5), not the raw r||s of JOSE — node:crypto's default. The key type
-// is checked against the algorithm again, so a stored key can't be pressed
-// into another algorithm's service whatever the database says.
+// §6.3.3 / §7.2: the signature is over authenticatorData followed by
+// SHA-256(clientDataJSON). ES256 signatures are ASN.1 DER here (WebAuthn's
+// signature formats), not the raw r||s of JOSE — node:crypto's default. The
+// key type is checked against the algorithm again, so a stored key can't be
+// pressed into another algorithm's service whatever the database says.
 function verifySignature(alg, key, data, signature) {
   try {
     if (alg === -7) {
@@ -405,7 +408,7 @@ function verifySignature(alg, key, data, signature) {
 // hundred bytes, an attestation object with a TPM certificate chain a few
 // kilobytes. The request body is capped at 1 MB anyway; these keep each
 // field to what its parser should ever be asked to read.
-const MAX_CREDENTIAL_ID_BYTES = 1023; // §5.8.3, checked again in §7.1
+const MAX_CREDENTIAL_ID_BYTES = 1023; // the most a credential ID may be; §7.1 checks it
 const MAX_CLIENT_DATA_BYTES = 4096;
 const MAX_ATTESTATION_OBJECT_BYTES = 64 * 1024;
 const MAX_AUTHENTICATOR_DATA_BYTES = 16 * 1024;
@@ -526,17 +529,20 @@ function checkAuthenticatorData(auth, rpId, { requireUserPresence, requireUserVe
   if (auth.flags.bs && !auth.flags.be) throw refused('backup state (BS) is set without backup eligibility (BE)');
 }
 
-// §7.1, after the client data is parsed. `resp` is readRegistrationResponse()'s
-// result; the caller has already matched its challenge to a live ceremony.
-// `requireUserPresence` is false only for an automatic passkey upgrade
-// (§7.1 checks UP only "if options.mediation is not set to conditional"), and
-// `requireUserVerification` with it, since that request asks for
-// userVerification "preferred". Returns what gets stored.
-function verifyRegistration(resp, { rpId, origin, requireUserPresence = true, requireUserVerification = true, algorithms = ALGORITHM_IDS }) {
+// §7.1, after the client data is parsed. `resp` is the result of
+// readRegistrationResponse(); the caller has already matched its challenge
+// to a live ceremony. `requireUserPresence` is false only for an automatic
+// passkey upgrade (§7.1 checks UP only "if options.mediation is not set to
+// conditional"), and `requireUserVerification` with it, since that request
+// asks for userVerification "preferred". Returns what gets stored.
+function verifyRegistration(
+  resp,
+  { rpId, origin, requireUserPresence = true, requireUserVerification = true, algorithms = ALGORITHM_IDS }
+) {
   checkClientData(resp.clientData.data, 'webauthn.create', origin);
 
-  // The attestation object is a CBOR map of fmt, attStmt and
-  // authData (§6.5). Other keys are not ours to interpret, so they are left.
+  // The attestation object is a CBOR map of fmt, attStmt and authData
+  // (§6.5). Other keys are not ours to interpret, so they are left alone.
   const att = decodeCbor(resp.attestationObject);
   if (!(att instanceof Map)) throw malformed('attestation object is not a map');
   const fmt = att.get('fmt');
@@ -554,8 +560,8 @@ function verifyRegistration(resp, { rpId, origin, requireUserPresence = true, re
   const auth = parseAuthenticatorData(authDataBytes);
   checkAuthenticatorData(auth, rpId, { requireUserPresence, requireUserVerification });
 
-  // A new credential comes with its ID and key, and the ID is
-  // the one the browser reported and short enough to be one.
+  // A new credential comes with its ID and key, and the ID is the one the
+  // browser reported, and short enough to be one.
   if (!auth.flags.at || !auth.attested) throw refused('no attested credential data (AT flag not set)');
   const { credentialId, publicKey, aaguid } = auth.attested;
   if (credentialId.length === 0 || credentialId.length > MAX_CREDENTIAL_ID_BYTES) {
@@ -588,15 +594,15 @@ function verifyRegistration(resp, { rpId, origin, requireUserPresence = true, re
   };
 }
 
-// §7.2, after the client data is parsed. `credential` is the stored record: publicKey (SPKI
-// DER), alg, signCount, backupEligible, and the owner's userHandle (bytes).
-// The caller has already matched the challenge and found this record by the
-// response's credential ID. Returns what gets updated.
+// §7.2, after the client data is parsed. `credential` is the stored record:
+// publicKey (SPKI DER), alg, signCount, backupEligible, and the owner's
+// userHandle (bytes). The caller has already matched the challenge and found
+// this record by the response's credential ID. Returns what gets updated.
 function verifyAuthentication(resp, { rpId, origin, credential }) {
-  // With an empty allowCredentials the user handle is how the
-  // account is identified, so it must be there, and must be the handle of
-  // the account that owns this credential — otherwise a credential of one
-  // account could be presented as belonging to another.
+  // With an empty allowCredentials the user handle is how the account is
+  // identified, so it must be there, and must be the handle of the account
+  // that owns this credential — otherwise a credential of one account could
+  // be presented as belonging to another.
   if (!resp.userHandle) throw refused('assertion carries no userHandle');
   const expected = credential.userHandle;
   if (
@@ -612,8 +618,8 @@ function verifyAuthentication(resp, { rpId, origin, credential }) {
   const auth = parseAuthenticatorData(resp.authenticatorData);
   checkAuthenticatorData(auth, rpId, { requireUserPresence: true, requireUserVerification: true });
 
-  // BE is fixed when a credential is made (§6.1.3); one that
-  // changes is not the credential we registered.
+  // BE is fixed when a credential is made (§6.1.3); one that changes is not
+  // the credential we registered.
   if (auth.flags.be !== credential.backupEligible) throw refused('backup eligibility (BE) changed since registration');
 
   // The signature, by the key stored at registration.
@@ -630,7 +636,10 @@ function verifyAuthentication(resp, { rpId, origin, credential }) {
   // falls back to zero: a clone that simply doesn't count must not slip past
   // the check by saying 0.
   if ((auth.signCount !== 0 || credential.signCount !== 0) && auth.signCount <= credential.signCount) {
-    const e = new WebAuthnError('counter', `signature counter ${auth.signCount} is not above the stored ${credential.signCount}`);
+    const e = new WebAuthnError(
+      'counter',
+      `signature counter ${auth.signCount} is not above the stored ${credential.signCount}`
+    );
     e.received = auth.signCount;
     throw e;
   }

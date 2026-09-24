@@ -13,6 +13,7 @@
   ],
   "tags": [
     { "name": "Auth", "description": "Accounts, sessions, and sign-in through GitHub, Google or an OpenID Connect provider" },
+    { "name": "Passkeys", "description": "Sign-up, sign-in and management with passkeys (W3C Web Authentication Level 3). Only when PUBLIC_ORIGIN is set; otherwise every route but config answers 404." },
     { "name": "Trees", "description": "Skill trees" },
     { "name": "Skills", "description": "Individual skills inside a tree" },
     { "name": "Prerequisites", "description": "Directed links between skills" },
@@ -250,7 +251,7 @@
       "delete": {
         "operationId": "disconnectIdentity",
         "summary": "Disconnect a provider account",
-        "description": "Refused with 409 when it is the last way to sign in: an account keeps at least one of a password or a connected provider that is configured now. Another account's identity answers 404, exactly like one that does not exist.",
+        "description": "Refused with 409 when it is the last way to sign in: an account keeps at least one of a password, a passkey for the current RP ID, or a connected provider that is configured now. Another account's identity answers 404, exactly like one that does not exist.",
         "tags": ["Auth"],
         "security": [{ "SessionCookie": [] }],
         "responses": {
@@ -265,6 +266,274 @@
           "409": {
             "description": "It is the only remaining way to sign in",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/passkeys/config": {
+      "get": {
+        "operationId": "passkeyConfig",
+        "summary": "Whether passkeys are on, and for which RP ID",
+        "description": "Passkeys are on only when PUBLIC_ORIGIN is set (and names a host, not an IP address): the RP ID is its host, and clientDataJSON.origin must equal it exactly. With passkeys off, every other /api/auth/passkeys route answers 404.",
+        "tags": ["Passkeys"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Whether the page should offer passkeys",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyConfig" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/passkeys/register/options": {
+      "post": {
+        "operationId": "passkeyRegistrationOptions",
+        "summary": "Start adding a passkey to the signed-in account",
+        "description": "Returns PublicKeyCredentialCreationOptionsJSON (WebAuthn Level 3 §5.4) for navigator.credentials.create(), after PublicKeyCredential.parseCreationOptionsFromJSON(): the account's random 64-byte user handle (made on first use, never the row id), residentKey and userVerification required, attestation none, algorithms -8, -7 and -257, the account's existing passkeys in excludeCredentials, and credProps. Needs a sign-in from the last 10 minutes (403 otherwise; ASVS V3.7.1). With {\"mediation\": \"conditional\"} it is an automatic passkey upgrade: only for a session under five minutes old, with userVerification \"preferred\", and the one registration whose response may lack the UP and UV flags. Sets the cookie binding the ceremony to this browser; replaces any registration the account had open. At most 50 passkeys per account.",
+        "tags": ["Passkeys"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyRegistrationStart" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Creation options; the ceremony cookie is set",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetPasskeyCookie" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyCreationOptions" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": {
+            "description": "No sign-in in the last 10 minutes (or, for an upgrade, the last five); sign in again and retry",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": {
+            "description": "The account already has 50 passkeys",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "500": { "$ref": "#/components/responses/ServerError" },
+          "503": {
+            "description": "Too many unfinished passkey ceremonies across the site",
+            "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/passkeys/register/verify": {
+      "post": {
+        "operationId": "passkeyRegistrationVerify",
+        "summary": "Finish adding a passkey",
+        "description": "Takes the credential's JSON (credential.toJSON()). Verified per WebAuthn Level 3 §7.1: the challenge is found by its SHA-256 and used up before anything else (single use, five minutes, issued for a registration to this account and to this browser's ceremony cookie); clientDataJSON type webauthn.create, origin exactly PUBLIC_ORIGIN, not cross-origin; rpIdHash; UP and UV (except for an upgrade); BS only with BE; attested credential data present, credential ID at most 1023 bytes and equal to rawId; the key's algorithm one of those offered, RSA at least 2048 bits. fmt none must have an empty statement; any other format is accepted with its statement unread (no attestation trust). A client reporting credProps.rk false is refused. Malformed input — CBOR included — is a 400, never a 500.",
+        "tags": ["Passkeys"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyRegistrationResponse" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored; the ceremony cookie is cleared",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetPasskeyCookie" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Passkey" } } }
+          },
+          "400": {
+            "description": "Unreadable, expired, used, issued for something else, or refused by a check",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": {
+            "description": "That credential ID is already registered (to any account), or the account has 50 passkeys",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/passkeys/signup/options": {
+      "post": {
+        "operationId": "passkeySignupOptions",
+        "summary": "Start creating an account with a passkey and no password",
+        "description": "The same username rule and the same per-address throttle as POST /api/auth/signup, counted at the same point: a malformed name is free, a taken one counts as a probe, and everything that gets as far as issuing a challenge counts. No account is made here — only once the passkey verifies. The new account's user handle travels with the ceremony.",
+        "tags": ["Passkeys"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeySignupStart" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Creation options; the ceremony cookie is set",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetPasskeyCookie" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyCreationOptions" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" },
+          "503": {
+            "description": "Too many unfinished passkey ceremonies across the site",
+            "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/passkeys/signup/verify": {
+      "post": {
+        "operationId": "passkeySignupVerify",
+        "summary": "Finish creating an account with a passkey",
+        "description": "Verified as for register/verify (UP and UV required). Then the account — with no password — and its passkey are created in one transaction, and a fresh session is started, as a password signup does.",
+        "tags": ["Passkeys"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyRegistrationResponse" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created and signed in; the session cookie is set and the ceremony cookie cleared",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "400": {
+            "description": "Unreadable, expired, used, issued for something else, or refused by a check",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": {
+            "description": "The username was taken while the passkey was being made, or the credential ID is already registered",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/passkeys/login/options": {
+      "post": {
+        "operationId": "passkeyLoginOptions",
+        "summary": "Start signing in with a passkey",
+        "description": "Returns PublicKeyCredentialRequestOptionsJSON (§5.5) with an empty allowCredentials — any discoverable credential for this RP ID — and userVerification required. The sign-in page asks for these as it loads, for autofill (conditional mediation). A browser replacing a ceremony of its own (it sends the previous ceremony cookie) adds no row and isn't throttled; otherwise the request counts against the address, and is given back when that sign-in completes.",
+        "tags": ["Passkeys"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Request options; the ceremony cookie is set",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetPasskeyCookie" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyRequestOptions" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" },
+          "503": {
+            "description": "Too many unfinished passkey ceremonies across the site",
+            "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/passkeys/login/verify": {
+      "post": {
+        "operationId": "passkeyLoginVerify",
+        "summary": "Finish signing in with a passkey",
+        "description": "Counted against the address before anything is read. Verified per §7.2: the challenge used up first (single use, five minutes, a sign-in challenge, this browser's); the credential found by id among those for this RP ID; userHandle present and equal to the owning account's handle; clientDataJSON type webauthn.get, origin exact, not cross-origin; rpIdHash; UP and UV; BE unchanged since registration; the signature over authenticatorData || SHA-256(clientDataJSON). The signature counter must rise once either side is non-zero; a regression is refused and logged as a possible clone. A fresh session as for a password login. An unknown credential answers 401 with unknown_credential: true, for PublicKeyCredential.signalUnknownCredential().",
+        "tags": ["Passkeys"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyAuthenticationResponse" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in; the session cookie is set and the ceremony cookie cleared",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": {
+            "description": "Expired, used, from another browser, unknown (unknown_credential: true), or refused by a check",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/PasskeyError" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/passkeys": {
+      "get": {
+        "operationId": "listPasskeys",
+        "summary": "The signed-in account's passkeys",
+        "description": "With what the page's Signal API calls need (rp_id, user_handle) and how many ways in the account has (sign_in_methods), so the page can grey out removing the last one.",
+        "tags": ["Passkeys"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "The account's passkeys, oldest first",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/passkeys/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/PasskeyId" }],
+      "patch": {
+        "operationId": "renamePasskey",
+        "summary": "Rename a passkey",
+        "description": "The name loses control characters and is cut to 60 characters; an empty one is refused. Another account's passkey answers 404, exactly like one that does not exist.",
+        "tags": ["Passkeys"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeyRename" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Renamed",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Passkey" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "removePasskey",
+        "summary": "Remove a passkey",
+        "description": "Refused with 409 when it is the last way to sign in (signInMethodCount(): a password, providers configured now, passkeys for the current RP ID). A passkey made for another RP ID never counted and can always be removed. Another account's passkey answers 404.",
+        "tags": ["Passkeys"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": {
+            "description": "It is the only remaining way to sign in",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
@@ -855,6 +1124,10 @@
         "description": "Sets (on start) or clears (on callback) the cookie binding a provider sign-in to this browser: HttpOnly, SameSite=Lax, Path=/, ten minutes; __Host-skilltree_oauth and Secure over HTTPS. The callback also sets the session cookie when it signs someone in.",
         "schema": { "type": "string", "maxLength": 500 }
       },
+      "SetPasskeyCookie": {
+        "description": "Sets (on options) or clears (on verify) the cookie binding a passkey ceremony to this browser: a fresh random value each time, HttpOnly, SameSite=Strict, Path=/, five minutes; __Host-skilltree_webauthn and Secure over HTTPS. A verify that signs someone in sets the session cookie as well.",
+        "schema": { "type": "string", "maxLength": 500 }
+      },
       "ClearSiteData": {
         "description": "W3C Clear Site Data. Always \"cookies\".",
         "schema": { "type": "string", "enum": ["\"cookies\""] }
@@ -930,6 +1203,13 @@
         "required": true,
         "description": "A session's public id, from GET /api/auth/sessions. Random, and unrelated to the session token.",
         "schema": { "type": "string", "pattern": "^[0-9a-f]{32}$", "minLength": 32, "maxLength": 32 }
+      },
+      "PasskeyId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "A passkey's id, from GET /api/auth/passkeys.",
+        "schema": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
       }
     },
     "responses": {
@@ -971,7 +1251,7 @@
         "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "SignInAgain": {
-        "description": "This needs a sign-in from the last 10 minutes (ASVS V3.7.1): setting a first password or deleting an account that has none, or ending another browser's session. Sign out and in again, then retry.",
+        "description": "This needs a sign-in from the last 10 minutes (ASVS V3.7.1): setting a first password or deleting an account that has none, ending another browser's session, or adding a passkey. Sign out and in again, then retry.",
         "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "TooManyRequests": {
@@ -1103,13 +1383,20 @@
       "CurrentUser": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "username", "has_password"],
+        "required": ["id", "username", "has_password", "passkeys"],
         "properties": {
           "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
           "username": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{3,40}$", "minLength": 3, "maxLength": 40 },
           "has_password": {
             "type": "boolean",
-            "description": "False for an account made through a provider, which has no password."
+            "description": "False for an account made through a provider or with a passkey, which has no password."
+          },
+          "passkeys": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0,
+            "maximum": 50,
+            "description": "How many passkeys can sign in to it here (made for the current RP ID); 0 when passkeys are off."
           }
         }
       },
@@ -1171,6 +1458,230 @@
             "type": "boolean",
             "description": "Whether it can sign in now: its provider is configured, under the same issuer."
           }
+        }
+      },
+      "PasskeyConfig": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["enabled"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "rp_id": { "type": "string", "maxLength": 253, "description": "Present when enabled: PUBLIC_ORIGIN's host.", "example": "skilltrees.example" }
+        }
+      },
+      "Base64Url": {
+        "type": "string",
+        "description": "Unpadded base64url (RFC 4648 §5), as WebAuthn's JSON forms use for binary members. Must be canonical: exactly the encoding of the bytes it decodes to.",
+        "pattern": "^[A-Za-z0-9_-]*$"
+      },
+      "PasskeyCredentialDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "id"],
+        "properties": {
+          "type": { "type": "string", "enum": ["public-key"] },
+          "id": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 1364 },
+          "transports": {
+            "type": "array",
+            "maxItems": 6,
+            "items": { "type": "string", "enum": ["usb", "nfc", "ble", "smart-card", "hybrid", "internal"] }
+          }
+        }
+      },
+      "PasskeyRegistrationStart": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mediation": {
+            "type": "string",
+            "enum": ["conditional"],
+            "description": "Ask for an automatic passkey upgrade (conditional create) rather than an ordinary registration."
+          }
+        }
+      },
+      "PasskeySignupStart": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["username"],
+        "properties": {
+          "username": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{3,40}$", "minLength": 3, "maxLength": 40, "example": "ada" }
+        }
+      },
+      "PasskeyCreationOptions": {
+        "type": "object",
+        "description": "PublicKeyCredentialCreationOptionsJSON (WebAuthn Level 3 §5.4), for PublicKeyCredential.parseCreationOptionsFromJSON().",
+        "additionalProperties": false,
+        "required": ["rp", "user", "challenge", "pubKeyCredParams", "timeout", "excludeCredentials", "authenticatorSelection", "attestation", "extensions"],
+        "properties": {
+          "rp": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "string", "maxLength": 253 },
+              "name": { "type": "string", "enum": ["Skill Trees"] }
+            }
+          },
+          "user": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "displayName"],
+            "properties": {
+              "id": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "description": "The user handle: 64 random bytes, never the account's row id.", "minLength": 86, "maxLength": 86 },
+              "name": { "type": "string", "maxLength": 40 },
+              "displayName": { "type": "string", "maxLength": 40 }
+            }
+          },
+          "challenge": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "description": "32 random bytes.", "minLength": 43, "maxLength": 43 },
+          "pubKeyCredParams": {
+            "type": "array",
+            "description": "Ed25519, then ES256, then RS256.",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "alg"],
+              "properties": {
+                "type": { "type": "string", "enum": ["public-key"] },
+                "alg": { "type": "integer", "enum": [-8, -7, -257] }
+              }
+            }
+          },
+          "timeout": { "type": "integer", "enum": [300000] },
+          "excludeCredentials": {
+            "type": "array",
+            "description": "The account's passkeys for this RP ID; empty for a sign-up.",
+            "maxItems": 50,
+            "items": { "$ref": "#/components/schemas/PasskeyCredentialDescriptor" }
+          },
+          "authenticatorSelection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["residentKey", "requireResidentKey", "userVerification"],
+            "properties": {
+              "residentKey": { "type": "string", "enum": ["required"] },
+              "requireResidentKey": { "type": "boolean", "enum": [true] },
+              "userVerification": { "type": "string", "enum": ["required", "preferred"], "description": "\"preferred\" only for an automatic upgrade." }
+            }
+          },
+          "attestation": { "type": "string", "enum": ["none"] },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["credProps"],
+            "properties": { "credProps": { "type": "boolean", "enum": [true] } }
+          }
+        }
+      },
+      "PasskeyRequestOptions": {
+        "type": "object",
+        "description": "PublicKeyCredentialRequestOptionsJSON (§5.5), for PublicKeyCredential.parseRequestOptionsFromJSON().",
+        "additionalProperties": false,
+        "required": ["challenge", "timeout", "rpId", "allowCredentials", "userVerification"],
+        "properties": {
+          "challenge": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "minLength": 43, "maxLength": 43 },
+          "timeout": { "type": "integer", "enum": [300000] },
+          "rpId": { "type": "string", "maxLength": 253 },
+          "allowCredentials": { "type": "array", "maxItems": 0, "items": { "$ref": "#/components/schemas/PasskeyCredentialDescriptor" } },
+          "userVerification": { "type": "string", "enum": ["required"] }
+        }
+      },
+      "PasskeyRegistrationResponse": {
+        "type": "object",
+        "description": "RegistrationResponseJSON (§5.1), as credential.toJSON() returns it. Members not listed are ignored.",
+        "required": ["id", "rawId", "type", "response"],
+        "properties": {
+          "id": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 1364, "description": "Must equal rawId." },
+          "rawId": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 1364 },
+          "type": { "type": "string", "enum": ["public-key"] },
+          "response": {
+            "type": "object",
+            "required": ["clientDataJSON", "attestationObject"],
+            "properties": {
+              "clientDataJSON": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 5462 },
+              "attestationObject": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 87382 },
+              "transports": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 40 } }
+            }
+          },
+          "authenticatorAttachment": { "type": "string", "nullable": true, "maxLength": 40 },
+          "clientExtensionResults": {
+            "type": "object",
+            "properties": {
+              "credProps": { "type": "object", "properties": { "rk": { "type": "boolean" } } }
+            }
+          }
+        }
+      },
+      "PasskeyAuthenticationResponse": {
+        "type": "object",
+        "description": "AuthenticationResponseJSON (§5.1), as credential.toJSON() returns it. Members not listed are ignored.",
+        "required": ["id", "rawId", "type", "response"],
+        "properties": {
+          "id": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 1364, "description": "Must equal rawId." },
+          "rawId": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 1364 },
+          "type": { "type": "string", "enum": ["public-key"] },
+          "response": {
+            "type": "object",
+            "required": ["clientDataJSON", "authenticatorData", "signature", "userHandle"],
+            "properties": {
+              "clientDataJSON": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 5462 },
+              "authenticatorData": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 21846 },
+              "signature": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "minLength": 1, "maxLength": 1366 },
+              "userHandle": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 86, "description": "Required: sign-in uses discoverable credentials, and this names the account." }
+            }
+          },
+          "authenticatorAttachment": { "type": "string", "nullable": true, "maxLength": 40 },
+          "clientExtensionResults": { "type": "object" }
+        }
+      },
+      "Passkey": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "credential_id", "created_at", "last_used_at", "backup_eligible", "backed_up", "transports", "enabled"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991, "readOnly": true },
+          "name": { "type": "string", "minLength": 1, "maxLength": 60, "description": "The owner's label. New passkeys are named after a known provider's AAGUID (\"iCloud Keychain\"), or \"Passkey\"." },
+          "credential_id": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "maxLength": 1364, "description": "For the Signal API. Not a secret; only its owner is shown it." },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "last_used_at": { "allOf": [{ "$ref": "#/components/schemas/Timestamp" }], "nullable": true },
+          "backup_eligible": { "type": "boolean", "description": "The BE flag: fixed when it was made." },
+          "backed_up": { "type": "boolean", "description": "The BS flag as of the last sign-in: synced to other devices." },
+          "transports": { "type": "array", "maxItems": 6, "items": { "type": "string", "enum": ["usb", "nfc", "ble", "smart-card", "hybrid", "internal"] } },
+          "enabled": { "type": "boolean", "description": "Made for the RP ID in force now, so it can sign in here — the rule signInMethodCount() counts by." }
+        }
+      },
+      "PasskeyList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rp_id", "user_handle", "sign_in_methods", "passkeys"],
+        "properties": {
+          "rp_id": { "type": "string", "maxLength": 253 },
+          "user_handle": { "allOf": [{ "$ref": "#/components/schemas/Base64Url" }], "nullable": true, "maxLength": 86, "description": "The account's user handle, or null if it has never had a passkey." },
+          "sign_in_methods": { "type": "integer", "format": "int32", "minimum": 0, "description": "Ways in the account has now: a password, providers configured now, passkeys usable here." },
+          "passkeys": { "type": "array", "maxItems": 50, "items": { "$ref": "#/components/schemas/Passkey" } }
+        }
+      },
+      "PasskeyRename": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 500, "description": "Control characters removed, trimmed and cut to 60 characters.", "example": "Work laptop" }
+        }
+      },
+      "PasskeyError": {
+        "description": "Problem details, plus unknown_credential: true when the passkey presented isn't registered here — the page then calls PublicKeyCredential.signalUnknownCredential().",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "detail", "error"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference", "maxLength": 300, "example": "about:blank" },
+          "title": { "type": "string", "maxLength": 100, "example": "Unauthorized" },
+          "status": { "type": "integer", "format": "int32", "minimum": 400, "maximum": 599, "example": 401 },
+          "detail": { "type": "string", "maxLength": 300 },
+          "error": { "type": "string", "maxLength": 300 },
+          "unknown_credential": { "type": "boolean", "enum": [true] }
         }
       },
       "PasswordChange": {
@@ -1330,7 +1841,7 @@
       },
       "ExportedPasskey": {
         "type": "object",
-        "description": "Whichever of id, name (or label/nickname), created_at and last_used_at (or last_used) the passkeys table has. Never key material, credential ids or counters.",
+        "description": "A passkey's id, name, created_at and last_used_at, read by an allow-list of columns. Never key material, credential ids, AAGUIDs or counters.",
         "properties": {
           "id": { "oneOf": [{ "type": "integer" }, { "type": "string", "maxLength": 200 }] },
           "name": { "type": "string", "nullable": true, "maxLength": 200 },

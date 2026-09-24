@@ -76,7 +76,8 @@ reporter, and watchers for console errors and for write requests.
 
 `BASE_URL=http://localhost:3001` aims a suite at a running server instead
 (all but `oauth-browser`, which needs its mock provider configured on the
-server it starts). They delete the trees they create either way; the
+server it starts, and `passkeys-browser`, which needs `PUBLIC_ORIGIN` to be
+the very origin the browser is on). They delete the trees they create either way; the
 accounts they sign up stay.
 The suites that use the example tree need it seeded there
 (`node backend/db/seed.js`), and the rate limits above apply — run them one or
@@ -108,6 +109,7 @@ auto-layout tree. Once it's decided, replace those SKIPs with the answer.
 | `zoom-pan.test.js` | Scroll zoom, drag-to-pan, the zoom buttons and Fit, and that node dragging still moves the node rather than the view. Runs signed out: it writes nothing. |
 | `drag-not-saved.test.js` | Dragging moves a node on screen but never reaches the database for a signed-out visitor, another account, or on an auto-layout tree; the owner's manual-layout drag is skipped (see above). |
 | `oauth-browser.test.js` | "Continue with ..." end to end in Chromium against the mock provider: sign-in, the account panel, connecting and disconnecting, error messages, and no console errors or CSP violations. Starts its own mock provider too. |
+| `passkeys-browser.test.js` | Passkeys in Chromium with a virtual authenticator attached over CDP (`WebAuthn.addVirtualAuthenticator`: CTAP2, internal, resident keys, user verification): sign-up with a passkey, the account page's Passkeys section (list, "only way in", add — including one the authenticator already holds, rename inline, remove with confirmation), "sign in again" for an old session, both Signal API calls (the authenticator really forgets the credential), signing in with the button and through autofill, a password sign-in with autofill pending, and a second pass without the Level 3 JSON helpers to exercise the base64url fallback. Picks a free port first, since `PUBLIC_ORIGIN` must be `http://localhost:<port>`. Fails on any console error or CSP violation except the refusals it provokes. |
 | `account-browser.test.js` | The account page's own sections in Chromium: ending another session and "sign out everywhere else", changing a password (a wrong one first), downloading your data, deleting the account through its dialog (Escape, a wrong name, a wrong password, then for real), and "sign in again" for an account without a password. Focus and live-region checks throughout; fails on any console error or CSP violation except the refusals it provokes. Starts its own server. |
 | `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. |
 
@@ -155,6 +157,8 @@ client already carrying that account's session cookie.
 | `api/http-lib.test.js` | Unit checks for `backend/lib/http.js`; starts no server. |
 | `api/oauth.test.js` | Provider sign-in end to end against the mock provider: PKCE, state, `iss`, nonce and ID-token checks, login CSRF, linking and unlinking, cookie naming. |
 | `api/oauth-lib.test.js` | Unit checks for `backend/lib/oauth.js`: ID-token verification, JWKS caching, discovery, outbound-request limits. |
+| `api/passkeys.test.js` | Passkeys end to end, driven by the software authenticator: register and sign in with ES256, EdDSA and RS256; passkey sign-up; options shape; challenge replay, expiry, cross-purpose use, browser and account binding; wrong origin, RP ID, type or framing; UP/UV; bad signatures; the counter rule (clones logged); BE/BS; user-handle mismatch; unknown credentials; excludeCredentials; duplicate credential IDs; algorithms and weak RSA; attestation formats; the list, rename and remove (owner-only); the last-way-in rule; RP ID changes; the automatic upgrade; the recent sign-in adding one needs; malformed input never a 500; throttling. |
+| `api/webauthn-lib.test.js` | Unit checks for `backend/lib/webauthn.js`: configuration, the CBOR reader (truncated, huge lengths, deep nesting, tags, floats, 3000 random inputs), authenticator data, COSE keys and signatures, and both ceremonies' checks. Starts no server. |
 | `api/account.test.js` | Account management: changing a password and setting a first one (only within ten minutes of signing in), what is and isn't counted, other sessions ended and the cookie rotated, a change whose session ends mid-hash; listing and ending sessions, including another account's (404) and without a recent sign-in (403); deleting the account with its trees, sessions and identities and nobody else's; a schema audit that every reference to `users` cascades except `trees.user_id`; the export's contents, secrets left out, and its trees importing again unchanged; throttling. |
 
 `api/account.test.js` makes accounts without a password by writing them
@@ -162,6 +166,18 @@ straight into the test database (`srv.dbPath`), with a session of a chosen
 age — the rules under test are what such an account may do, not how a
 provider made it. Signups are rationed per address, so each of its groups
 starts a server of its own and signs up no more than ten accounts on it.
+
+The passkey suites use `helpers/webauthn-authenticator.js`: a
+zero-dependency software authenticator standing in for the browser and the
+device together. It takes the options JSON the server hands out and returns
+what `credential.toJSON()` would — client data, authenticator data, a CBOR
+attestation object with `fmt: "none"`, signed assertions — for ES256,
+Ed25519 and RS256 keys, with knobs to get each part wrong (origin, RP ID,
+type, challenge, UP/UV/BE/BS, counter, user handle, signature, algorithm,
+attestation format, credential ID, raw bytes anywhere). API suites can use
+any `PUBLIC_ORIGIN` as long as the authenticator uses the same one;
+`api/passkeys.test.js` uses `https://skilltrees.test`. It clears
+`rate_limits` before each test, since every request comes from 127.0.0.1.
 
 The OAuth suites (`api/oauth.test.js`, `api/oauth-lib.test.js`) use
 `helpers/mock-oidc.js`: a zero-dependency OpenID Connect provider on

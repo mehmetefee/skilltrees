@@ -205,7 +205,10 @@
           ? 'No passkey was made: the request was cancelled or timed out.'
           : 'Signing in with a passkey was cancelled or timed out.';
       case 'InvalidStateError':
-        return 'This device or password manager already has a passkey for your account. Use that one, or pick somewhere else to save a new one.';
+        return (
+          'This device or password manager already has a passkey for your account. ' +
+          'Use that one, or pick somewhere else to save a new one.'
+        );
       case 'NotSupportedError':
         return "This device can't make a passkey of a kind this site accepts.";
       case 'SecurityError':

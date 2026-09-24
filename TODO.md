@@ -123,3 +123,42 @@ each for a reason:
   published lists; a full corpus is a data file or an outbound call to a
   k-anonymity range API — a third party learning when people change
   passwords.
+
+## Passkeys: deferred on purpose
+Passkeys are in (see CLAUDE.md, "Passkeys"): sign-up, sign-in with the
+button and through autofill, add/rename/remove, the automatic upgrade after
+a password sign-in, and the Signal API. Left out, each for a reason:
+
+- **Attestation trust.** Options ask for `"none"`, and a statement in any
+  other format is accepted unread. Verifying `packed`, `tpm`, `apple` and
+  the rest means holding the FIDO Metadata Service's roots and keeping them
+  current, and it only pays for a site that allows some makes of
+  authenticator and not others. A consumer site has no such list; the
+  passkeys.dev guidance is the same.
+- **Related origins** (`/.well-known/webauthn`, Level 3). Passkeys are
+  scoped to `PUBLIC_ORIGIN`'s host; serving www and the bare domain both, or
+  a second domain, needs that file and an allowlist. Serve one canonical
+  host instead, as for provider sign-in. `/.well-known/passkey-endpoints`
+  (pointing at `/account.html#account-passkeys`) is a separate, small piece
+  of work — the section keeps that id for it.
+- **Moving to a new host.** Changing `PUBLIC_ORIGIN`'s host strands every
+  passkey (they're bound to the old RP ID). They stay listed, removable and
+  uncounted; a migration would need related origins first, then a period
+  where both hosts work.
+- **A passkey as the "sign in again" proof.** Re-authentication before a
+  sensitive change is a sign-out and a fresh sign-in today. A `get()` with
+  `allowCredentials` set to the account's passkeys, verified in place,
+  would be smoother — and would let the ten-minute window ask for something
+  a stolen cookie can't give (see "Recording how a session signed in").
+- **The same recent sign-in for linking a provider.** Adding a passkey needs
+  one, because a sign-in method added through a lifted cookie outlives a
+  password change; connecting a provider has the same property and doesn't
+  ask yet.
+- **Choosing a name when adding a passkey.** New ones are named from the
+  AAGUID when it's a known provider ("iCloud Keychain"), else "Passkey", and
+  renamed afterwards. Asking first is one more step in the one flow that
+  should be quick.
+- **`hints`** (`"security-key"`, `"client-device"`, `"hybrid"`). Nothing on
+  the page distinguishes those cases yet; the browser's own chooser does.
+- **PRF, largeBlob and other extensions.** Nothing here encrypts anything
+  client-side.
