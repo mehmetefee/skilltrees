@@ -1465,6 +1465,480 @@ route('DELETE', '/api/auth/identities/:id', async (req, res, params) => {
   sendJson(res, 200, { ok: true });
 });
 
+// ---------- account management: password, sessions, deletion, export ----------
+//
+// What a signed-in person can do to their own account besides sign in:
+//
+//   POST   /api/auth/password                change the password, or set a first one
+//   GET    /api/auth/sessions                every browser signed in to this account
+//   DELETE /api/auth/sessions/:id            end one of them
+//   POST   /api/auth/sessions/revoke-others  end all but this one
+//   GET    /api/auth/account                 what the account page says about it
+//   DELETE /api/auth/account                 erase the account and every tree it made
+//   GET    /api/auth/export                  everything held about it, as one file
+//
+// Written against OWASP ASVS V2.1 (changing a password), V3.3 (ending
+// sessions) and V3.7 (proving it's you again before a sensitive change),
+// NIST SP 800-63B §5.1.1.2 (the signup rules apply to every new password),
+// and the GDPR's rights of access and portability (Art. 15, 20) and erasure
+// (Art. 17). Every password here is checked through the same derive() as a
+// login — the same cost, the same cap on how many run at once — and every
+// throttle counter moves before the hash, never after, for the reason the
+// login route gives.
+
+// How recently a session must have signed in to stand in for a password
+// (ASVS V3.7.1). An account with no password — made through a provider — has
+// nothing to type before a sensitive change, so what it shows instead is
+// that this browser signed in within the last ten minutes. A session's
+// created_at is that moment: signing in writes it, nothing else does, and
+// rotateSession() keeps it. Ten minutes is time to sign in and go straight
+// to the setting; a browser left signed in for a week, or a cookie lifted
+// from one, is far outside it.
+const RECENT_AUTH_SEC = 10 * 60;
+const SIGN_IN_AGAIN =
+  'For your security, sign in again first. This needs a sign-in from the last 10 minutes.';
+
+// The session row a request is using: its age, and which row in the list is
+// "this device". Only meaningful after currentUser() has accepted the token.
+function currentSession(req) {
+  const token = sessionToken(req);
+  if (!token) return null;
+  return (
+    db
+      .prepare(
+        `SELECT token_hash, user_id, public_id,
+                created_at > datetime('now', ?) AS recent
+           FROM sessions WHERE token_hash = ?`
+      )
+      .get(`-${RECENT_AUTH_SEC} seconds`, hashToken(token)) || null
+  );
+}
+
+// Who is asking and through which session, or null with the 401 already sent.
+function accountRequest(req, res) {
+  const user = currentUser(req);
+  const session = user ? currentSession(req) : null;
+  if (!user || !session) {
+    sendJson(res, 401, { error: 'Sign in to manage your account.' });
+    return null;
+  }
+  return { user, session };
+}
+
+// Whether the session that started a slow request is still there to finish
+// it. A password check takes a few hundred milliseconds — time for the
+// session to be ended from another device, or signed out in another tab —
+// and a change asked for by a session that has since been ended must not
+// land after it. Call it with nothing awaited between it and the writes.
+function sessionStillLive(req, userId) {
+  const user = currentUser(req);
+  return user && user.id === userId ? currentSession(req) : null;
+}
+
+// Sessions that can still be used, most recently used first.
+function liveSessions(userId) {
+  return db
+    .prepare(
+      `SELECT token_hash, public_id, created_at, last_used_at, expires_at, user_agent
+         FROM sessions
+        WHERE user_id = ? AND expires_at > datetime('now') AND last_used_at > datetime('now', ?)
+        ORDER BY last_used_at DESC, created_at DESC`
+    )
+    .all(userId, `-${Math.floor(SESSION_IDLE_MS / 1000)} seconds`);
+}
+
+// A new token for a session, and nothing else about it changed: the same row
+// and id in the list, the same absolute expiry, and the same created_at —
+// rotating is not signing in, so it must not restart the ten-minute window.
+// The old token stops working in the same statement.
+function rotateSession(tokenHash) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('UPDATE sessions SET token_hash = ? WHERE token_hash = ?').run(hashToken(token), tokenHash);
+  return token;
+}
+
+// Counts an attempt at `action` per address, and per account within that
+// address — the login throttle's two keys, for the same reasons: counted
+// before the hash so a burst can't all pass on one stale number, and the
+// account key carries the address so nobody can use it to lock anyone else
+// out. Returns the keys, and whether either is over its limit.
+function countAccountAttempt(req, action, userId) {
+  const keys = {
+    ip: `${action}:${clientIp(req)}`,
+    user: `${action}-user:${userId}:${clientIp(req)}`,
+  };
+  const overIp = overLimit(keys.ip);
+  const overUser = overLimit(keys.user);
+  return { keys, over: overIp || overUser };
+}
+
+function tooManyAttempts(res) {
+  return sendJson(res, 429, { error: 'Too many attempts. Try again in a few minutes.' });
+}
+
+// Changing the password (ASVS V2.1.5, V2.1.6), or setting a first one on an
+// account made through a provider.
+//
+// With a password set, the current one is required: a session is only a
+// cookie, and a cookie can be lifted from a shared computer or a leaked log
+// — it should not be enough to take the account over for good. That makes
+// this another place to guess the current password, so it is throttled like
+// the login; it answers nothing the login doesn't already answer to anyone.
+// Without a password there is nothing to ask for, and a recent sign-in
+// stands in (RECENT_AUTH_SEC).
+//
+// Afterwards every other session of the account ends (ASVS V3.3.3): whoever
+// knew the old password may be signed in somewhere, and changing it is
+// exactly what someone does when they think so. This browser's session gets
+// a fresh token, so a copy of the cookie taken before the change is dead too.
+route('POST', '/api/auth/password', async (req, res) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user, session } = signedIn;
+
+  const body = await readBody(req);
+  const currentPassword = typeof body.current_password === 'string' ? body.current_password : '';
+  const newPassword = typeof body.new_password === 'string' ? body.new_password : '';
+  const account = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id);
+  const hadPassword = hasPassword(account);
+
+  if (hadPassword && !currentPassword) {
+    return sendJson(res, 400, { error: 'Enter your current password.' });
+  }
+  if (!hadPassword && !session.recent) {
+    return sendJson(res, 403, { error: SIGN_IN_AGAIN });
+  }
+  // The signup rules, the username check included. Refusals up to here cost
+  // nothing and give nothing away, so they are not counted: the limit
+  // rations guesses at the current password, not typos in the new one.
+  const problem = passwordProblem(newPassword, user.username);
+  if (problem) return sendJson(res, 400, { error: problem });
+  if (hadPassword && newPassword === currentPassword) {
+    return sendJson(res, 400, { error: 'Your new password must be different from your current one.' });
+  }
+
+  const attempt = countAccountAttempt(req, 'password-change', user.id);
+  if (attempt.over) {
+    console.log(`[AUTH] password change throttled user=${logSafe(user.username)} id=${user.id} ip=${clientIp(req)}`);
+    return tooManyAttempts(res);
+  }
+
+  if (hadPassword && !(await passwordMatches(currentPassword, account.password_hash))) {
+    console.log(`[AUTH] password change refused: wrong current password user=${logSafe(user.username)} id=${user.id} ip=${clientIp(req)}`);
+    return sendJson(res, 401, { error: 'That is not your current password.' });
+  }
+  const newHash = await hashPassword(newPassword);
+
+  // Nothing below awaits, so no other request can come between the checks
+  // and the writes. The password is swapped only if it is still the one that
+  // was checked, so of two changes racing each other, one wins and the other
+  // is told — rather than the second silently undoing the first.
+  const live = sessionStillLive(req, user.id);
+  if (!live) {
+    return sendJson(res, 401, { error: 'You were signed out before the new password was saved. Nothing was changed.' });
+  }
+  let token;
+  let ended;
+  db.exec('BEGIN');
+  try {
+    const swapped = db
+      .prepare('UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?')
+      .run(newHash, user.id, account.password_hash).changes;
+    if (!swapped) {
+      db.exec('ROLLBACK');
+      return sendJson(res, 409, { error: 'Your password was changed somewhere else a moment ago. Reload the page and try again.' });
+    }
+    ended = db
+      .prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?')
+      .run(user.id, live.token_hash).changes;
+    token = rotateSession(live.token_hash);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+
+  // As after a successful login: the address keeps the failures it had,
+  // this person's own fumbling is forgiven.
+  undoAttempt(attempt.keys.ip);
+  clearThrottle(attempt.keys.user);
+  console.log(
+    `[AUTH] password changed user=${logSafe(user.username)} id=${user.id} ` +
+      `first_password=${hadPassword ? 'no' : 'yes'} other_sessions_ended=${ended} ip=${clientIp(req)}`
+  );
+  sendJson(res, 200, { ok: true, other_sessions_ended: ended }, { 'Set-Cookie': sessionCookie(token, req) });
+});
+
+// Where this account is signed in (ASVS V3.3.4). The id is the session's
+// public_id; token_hash never leaves the server, not even a prefix of it.
+route('GET', '/api/auth/sessions', async (req, res) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user, session } = signedIn;
+  sendJson(
+    res,
+    200,
+    liveSessions(user.id).map((row) => ({
+      id: row.public_id,
+      created_at: row.created_at,
+      last_used_at: row.last_used_at,
+      user_agent: row.user_agent,
+      current: row.token_hash === session.token_hash,
+    }))
+  );
+});
+
+// Ending another browser's session needs a recent sign-in, which is ASVS
+// V3.3.4's "having re-entered login credentials". Without it, a cookie
+// stolen last week could end its owner's sessions as fast as they signed
+// in — and with them the password change that would have ended the thief's
+// (it checks its own session is still there before saving). With it, the
+// owner, freshly signed in, can always end an old stolen session, and the
+// stolen one can't end theirs. Ending your own session is signing out, and
+// is never refused.
+const SESSION_ID = /^[0-9a-f]{32}$/;
+
+route('DELETE', '/api/auth/sessions/:id', async (req, res, params) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user, session } = signedIn;
+  // Another account's session answers exactly like one that doesn't exist.
+  const target = SESSION_ID.test(params.id)
+    ? db.prepare('SELECT token_hash FROM sessions WHERE public_id = ? AND user_id = ?').get(params.id, user.id)
+    : null;
+  if (!target) return sendJson(res, 404, { error: 'No such session.' });
+
+  const isCurrent = target.token_hash === session.token_hash;
+  if (!isCurrent && !session.recent) return sendJson(res, 403, { error: SIGN_IN_AGAIN });
+  db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(target.token_hash);
+  console.log(`[AUTH] session ended user=${logSafe(user.username)} id=${user.id} current=${isCurrent ? 'yes' : 'no'} ip=${clientIp(req)}`);
+  sendJson(res, 200, { ok: true }, isCurrent ? { 'Set-Cookie': sessionCookie(null, req) } : {});
+});
+
+route('POST', '/api/auth/sessions/revoke-others', async (req, res) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user, session } = signedIn;
+  if (!session.recent) return sendJson(res, 403, { error: SIGN_IN_AGAIN });
+  const ended = db
+    .prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?')
+    .run(user.id, session.token_hash).changes;
+  console.log(`[AUTH] other sessions ended user=${logSafe(user.username)} id=${user.id} count=${ended} ip=${clientIp(req)}`);
+  sendJson(res, 200, { ok: true, ended });
+});
+
+// What the account page needs to say what deleting the account would take
+// with it. The tree count is the account's own; nothing here is public.
+route('GET', '/api/auth/account', async (req, res) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user } = signedIn;
+  const account = db.prepare('SELECT username, password_hash, created_at FROM users WHERE id = ?').get(user.id);
+  const trees = db.prepare('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(user.id).n;
+  sendJson(res, 200, {
+    id: user.id,
+    username: account.username,
+    created_at: account.created_at,
+    has_password: hasPassword(account),
+    tree_count: trees,
+  });
+});
+
+// Deleting the account (GDPR Art. 17, erasure) — and every tree it made.
+//
+// The trees go too, deliberately. They are what the person wrote, published
+// under their name; erasure that left them up would keep the bulk of their
+// personal data public while removing their ability to edit or delete it
+// (only the owner can, and the owner would be gone). Handing them to nobody
+// would make them read-only for ever, like the trees from before accounts.
+// The page says how many trees will go and offers the export first, whose
+// trees can each be imported again.
+//
+// Proof it's the owner, as for a password change: the password when there
+// is one, otherwise a recent sign-in. Typing the username is the "yes, this
+// account, on purpose" step; case-insensitive because usernames are (the
+// column is NOCASE). A wrong username or a missing password is a typo, not a
+// guess, and isn't counted; a wrong password is.
+route('DELETE', '/api/auth/account', async (req, res) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user, session } = signedIn;
+
+  const body = await readBody(req);
+  const confirmUsername = typeof body.confirm_username === 'string' ? body.confirm_username.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const account = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id);
+  const hadPassword = hasPassword(account);
+
+  if (confirmUsername.toLowerCase() !== user.username.toLowerCase()) {
+    return sendJson(res, 400, { error: 'Type your username to confirm.' });
+  }
+  if (hadPassword && !password) {
+    return sendJson(res, 400, { error: 'Enter your password to confirm.' });
+  }
+  if (!hadPassword && !session.recent) {
+    return sendJson(res, 403, { error: SIGN_IN_AGAIN });
+  }
+
+  const attempt = countAccountAttempt(req, 'account-delete', user.id);
+  if (attempt.over) {
+    console.log(`[AUTH] account deletion throttled user=${logSafe(user.username)} id=${user.id} ip=${clientIp(req)}`);
+    return tooManyAttempts(res);
+  }
+  if (hadPassword && !(await passwordMatches(password, account.password_hash))) {
+    console.log(`[AUTH] account deletion refused: wrong password user=${logSafe(user.username)} id=${user.id} ip=${clientIp(req)}`);
+    return sendJson(res, 401, { error: 'That password is not right.' });
+  }
+  if (!sessionStillLive(req, user.id)) {
+    return sendJson(res, 401, { error: 'You were signed out before the account was deleted. Nothing was changed.' });
+  }
+
+  // One transaction: the trees (their skills and links follow through ON
+  // DELETE CASCADE on tree_id), then the user. trees.user_id has no cascade
+  // of its own — a plain reference, added by migration — so the trees must go
+  // first or the user's row can't. Everything else that names a user
+  // (sessions, user_identities, oauth_flows) is ON DELETE CASCADE, and a
+  // test checks every reference to users is. A table added later without
+  // one makes this fail as a whole and roll back, never half-delete.
+  let deletedTrees;
+  db.exec('BEGIN');
+  try {
+    deletedTrees = db.prepare('DELETE FROM trees WHERE user_id = ?').run(user.id).changes;
+    db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+
+  console.log(`[AUTH] account deleted user=${logSafe(user.username)} id=${user.id} trees=${deletedTrees} ip=${clientIp(req)}`);
+  sendJson(res, 200, { ok: true, deleted_trees: deletedTrees }, {
+    'Set-Cookie': sessionCookie(null, req),
+    // W3C Clear Site Data. "cookies" for the same reasons as logout.
+    // "storage" as well, unlike logout: the person asked for everything of
+    // theirs to go, and what this site keeps in the browser — the viewer's
+    // copy of a tree in sessionStorage, which may well be one of the trees
+    // just deleted — is theirs. Not "cache": nothing personal is cached (the
+    // API is no-store, the files are the same for everyone), and it would
+    // only throw the fonts away. Not "executionContexts": the page that asked
+    // is leaving for the homepage anyway, and reloading every other open tab
+    // of the site is not the account's business. Acted on over HTTPS and
+    // localhost only, and for the whole registrable domain — see logout.
+    'Clear-Site-Data': '"cookies", "storage"',
+  });
+});
+
+// Passkeys are being built separately: until they land there is no table,
+// and when they do its columns are theirs to name. So the table is looked
+// for, and only columns on this list are read — an id, a name, when it was
+// made and last used. Never the public key, the credential id or the
+// signature counter: none of it is a secret the way a password is, but none
+// of it means anything to a person or anywhere else, which is what this
+// export is for. Both lists are constants, so nothing a caller sends ends up
+// in the SQL.
+const PASSKEY_TABLES = ['passkeys', 'webauthn_credentials'];
+const PASSKEY_EXPORT_COLUMNS = ['id', 'name', 'label', 'nickname', 'created_at', 'last_used_at', 'last_used'];
+
+function passkeyMetadata(userId) {
+  for (const table of PASSKEY_TABLES) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!columns.includes('user_id')) continue;
+    const wanted = PASSKEY_EXPORT_COLUMNS.filter((c) => columns.includes(c));
+    if (wanted.length === 0) continue;
+    const order = wanted.includes('created_at') ? ' ORDER BY created_at' : '';
+    return db.prepare(`SELECT ${wanted.join(', ')} FROM ${table} WHERE user_id = ?${order}`).all(userId);
+  }
+  return null;
+}
+
+// Everything this site holds about the account, as one JSON file (GDPR
+// Art. 15, access; Art. 20, portability: "structured, commonly used and
+// machine-readable"). Each tree is in the portable format of FORMAT.md,
+// made by the same treeToNotation() as a single tree's export, so each one
+// can be imported again as it is — here or anywhere that reads the format.
+//
+// Included: the account, its connected sign-ins (issuer and subject too —
+// they are what links the account, and are personal data, but they sign
+// nobody in on their own), its sessions (no token or hash of one) and its
+// passkeys' names and dates. Left out: the password hash, and anything a
+// provider issued (none of it is stored). Rationed per account, since a
+// large account's export is real work; it is a GET so it can be a plain
+// download, and a cross-site navigation to it only saves the visitor's own
+// data onto their own machine.
+route('GET', '/api/auth/export', async (req, res) => {
+  const signedIn = accountRequest(req, res);
+  if (!signedIn) return;
+  const { user, session } = signedIn;
+  if (overLimit(`account-export:${user.id}`)) {
+    console.log(`[AUTH] data export throttled user=${logSafe(user.username)} id=${user.id} ip=${clientIp(req)}`);
+    return tooManyAttempts(res);
+  }
+
+  const account = db.prepare('SELECT id, username, password_hash, created_at FROM users WHERE id = ?').get(user.id);
+  const identities = db
+    .prepare(
+      `SELECT provider, issuer, subject, display_name, created_at
+         FROM user_identities WHERE user_id = ? ORDER BY id`
+    )
+    .all(user.id)
+    .map((row) => {
+      const provider = OAUTH.providers.get(row.provider);
+      return { ...row, provider_name: provider ? provider.name : row.provider };
+    });
+  const sessions = liveSessions(user.id).map((row) => ({
+    created_at: row.created_at,
+    last_used_at: row.last_used_at,
+    expires_at: row.expires_at,
+    user_agent: row.user_agent,
+    current: row.token_hash === session.token_hash,
+  }));
+  const passkeys = passkeyMetadata(user.id);
+
+  const skillsOf = db.prepare('SELECT * FROM skills WHERE tree_id = ? ORDER BY id');
+  const edgesOf = db.prepare('SELECT id, skill_id, prereq_skill_id FROM prereqs WHERE tree_id = ?');
+  const trees = db
+    .prepare('SELECT * FROM trees WHERE user_id = ? ORDER BY id')
+    .all(user.id)
+    .map((tree) => ({
+      id: tree.id,
+      created_at: tree.created_at,
+      notation: treeToNotation(
+        { tree, skills: skillsOf.all(tree.id), edges: edgesOf.all(tree.id) },
+        { layout: tree.layout || DEFAULT_LAYOUT }
+      ),
+    }));
+
+  const data = {
+    format: 'skilltrees-account-export',
+    version: 1,
+    exported_at: db.prepare("SELECT datetime('now') AS now").get().now,
+    about:
+      'Everything Skill Trees holds about this account. Times are UTC. ' +
+      'Each trees[].notation is a skill tree in the portable format (FORMAT.md) ' +
+      'and can be imported again as it is.',
+    account: {
+      id: account.id,
+      username: account.username,
+      created_at: account.created_at,
+      has_password: hasPassword(account),
+    },
+    identities,
+    sessions,
+    ...(passkeys ? { passkeys } : {}),
+    trees,
+  };
+
+  console.log(`[AUTH] data export user=${logSafe(user.username)} id=${user.id} trees=${trees.length} ip=${clientIp(req)}`);
+  // Usernames are already [A-Za-z0-9_-]; this only makes sure of it, since
+  // the name goes into a header.
+  const filename = `skilltrees-${account.username.replace(/[^A-Za-z0-9_-]/g, '-')}.json`;
+  return sendRepresentation(req, res, 200, Buffer.from(JSON.stringify(data, null, 2) + '\n'), {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Cache-Control': 'private, no-store',
+  });
+});
+
 route('GET', '/api/trees', async (req, res) => {
   const trees = db.prepare(`
     SELECT t.id, t.title, t.description, t.author, t.created_at, t.featured,
