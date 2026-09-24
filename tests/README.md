@@ -43,6 +43,7 @@ CHROMIUM_PATH=/path/to/chrome node tests/core-crud.test.js
 | `zoom-pan.test.js` | Scroll zoom, drag-to-pan, the zoom buttons, and that node dragging still works alongside them. |
 | `drag-not-saved.test.js` | Dragging moves a node visually but never reaches the database. |
 | `oauth-browser.test.js` | "Continue with ..." end to end in Chromium against the mock provider: sign-in, the account panel, connecting and disconnecting, error messages, and no console errors or CSP violations. Starts its own server and provider, so it needs no running server. |
+| `account-browser.test.js` | The account page's own sections in Chromium: ending another session and "sign out everywhere else", changing a password (a wrong one first), downloading your data, deleting the account through its dialog (Escape, a wrong name, a wrong password, then for real), and "sign in again" for an account without a password. Focus and live-region checks throughout; fails on any console error or CSP violation except the refusals it provokes. Starts its own server. |
 | `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. Starts its own server — see below. |
 
 ### The keyboard suite starts its own server
@@ -107,6 +108,13 @@ client already carrying that account's session cookie.
 | `api/http-lib.test.js` | Unit checks for `backend/lib/http.js`; starts no server. |
 | `api/oauth.test.js` | Provider sign-in end to end against the mock provider: PKCE, state, `iss`, nonce and ID-token checks, login CSRF, linking and unlinking, cookie naming. |
 | `api/oauth-lib.test.js` | Unit checks for `backend/lib/oauth.js`: ID-token verification, JWKS caching, discovery, outbound-request limits. |
+| `api/account.test.js` | Account management: changing a password and setting a first one (only within ten minutes of signing in), what is and isn't counted, other sessions ended and the cookie rotated, a change whose session ends mid-hash; listing and ending sessions, including another account's (404) and without a recent sign-in (403); deleting the account with its trees, sessions and identities and nobody else's; a schema audit that every reference to `users` cascades except `trees.user_id`; the export's contents, secrets left out, and its trees importing again unchanged; throttling. |
+
+`api/account.test.js` makes accounts without a password by writing them
+straight into the test database (`srv.dbPath`), with a session of a chosen
+age — the rules under test are what such an account may do, not how a
+provider made it. Signups are rationed per address, so each of its groups
+starts a server of its own and signs up no more than ten accounts on it.
 
 The OAuth suites (`api/oauth.test.js`, `api/oauth-lib.test.js`) use
 `helpers/mock-oidc.js`: a zero-dependency OpenID Connect provider on
