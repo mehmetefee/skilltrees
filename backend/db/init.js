@@ -11,10 +11,16 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const DB_DIR = __dirname;
-const DB_PATH = path.join(DB_DIR, 'skilltree.db');
+// SKILLTREE_DB points the server at another database file. Tests use it to
+// give every run a throwaway database of its own, so suites can run side by
+// side without sharing accounts, trees or rate-limit counters.
+const DB_PATH = process.env.SKILLTREE_DB
+  ? path.resolve(process.env.SKILLTREE_DB)
+  : path.join(__dirname, 'skilltree.db');
+const DB_DIR = path.dirname(DB_PATH);
 
 function openDb() {
   const isNew = !fs.existsSync(DB_PATH);
@@ -37,23 +43,35 @@ function openDb() {
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- password_hash is '' for an account made through another provider,
+    -- which has no password. See NO_PASSWORD in server.js for why that is a
+    -- sentinel rather than a NULL.
     CREATE TABLE IF NOT EXISTS users (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      -- The passkey user handle; see migrate().
+      webauthn_user_id TEXT
     );
 
     -- One row per signed-in browser. Deleting a row signs that browser out.
     -- Only the SHA-256 of the token is kept: a leaked database then gives an
     -- attacker no usable session cookies. Sessions expire both absolutely
     -- (expires_at) and after a stretch of inactivity (last_used_at).
+    -- created_at is when this browser signed in, and nothing else writes it:
+    -- it is what "signed in recently" is judged by (RECENT_AUTH_SEC).
+    -- public_id and user_agent exist for the account page's session list;
+    -- see startSession() in server.js. Unique through an index in migrate(),
+    -- because ADD COLUMN can't carry UNIQUE for databases made before them.
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash   TEXT PRIMARY KEY,
       user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at   TEXT NOT NULL DEFAULT (datetime('now')),
       last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
-      expires_at   TEXT NOT NULL
+      expires_at   TEXT NOT NULL,
+      public_id    TEXT,
+      user_agent   TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS skills (
@@ -82,6 +100,97 @@ function openDb() {
       first_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- Sign-ins through another provider (GitHub, Google, an OpenID Connect
+    -- provider), attached to an account. The person is identified at the
+    -- provider by (issuer, subject) — OIDC Core §5.7 names that pair as the
+    -- only stable identifier, since a subject is unique only within its
+    -- issuer. Never by email: an address can be unverified, or re-registered
+    -- by someone else, and matching on it hands the account to them.
+    -- provider says which button this came through ('github', 'google',
+    -- 'oidc'); display_name is only for showing which account is connected.
+    CREATE TABLE IF NOT EXISTS user_identities (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider     TEXT NOT NULL,
+      issuer       TEXT NOT NULL,
+      subject      TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(issuer, subject)
+    );
+
+    -- One row per sign-in that has been sent to a provider and not come back.
+    -- Server-side, so nothing the browser carries can be edited into a
+    -- different flow. state_hash is the lookup key and browser_hash binds the
+    -- flow to the browser that started it; both are SHA-256 only, like session
+    -- tokens, so reading this table gives nothing that completes a sign-in.
+    -- The PKCE verifier and nonce have to be kept as they are, to be sent and
+    -- compared. Rows are single-use and live ten minutes.
+    CREATE TABLE IF NOT EXISTS oauth_flows (
+      state_hash    TEXT PRIMARY KEY,
+      browser_hash  TEXT NOT NULL,
+      provider      TEXT NOT NULL,
+      code_verifier TEXT NOT NULL,
+      nonce         TEXT,
+      intent        TEXT NOT NULL,
+      next_path     TEXT NOT NULL,
+      link_user_id  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at    TEXT NOT NULL
+    );
+
+    -- Passkeys (WebAuthn credentials), the "credential record" of WebAuthn
+    -- Level 3 §4. credential_id is base64url and unique across every
+    -- account (§7.1: a credential ID already registered is refused).
+    -- public_key is the SubjectPublicKeyInfo DER of the key, alg its COSE
+    -- algorithm. rp_id is the RP ID it was made for: a passkey only works
+    -- on that domain, so one made under an earlier PUBLIC_ORIGIN is not a
+    -- way in any more (signInMethodCount() leaves it out). backup_eligible
+    -- and backed_up are the BE and BS flags; aaguid names the make, for a
+    -- default label. name is the owner's to change.
+    CREATE TABLE IF NOT EXISTS passkeys (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      credential_id   TEXT NOT NULL UNIQUE,
+      public_key      BLOB NOT NULL,
+      alg             INTEGER NOT NULL,
+      sign_count      INTEGER NOT NULL DEFAULT 0,
+      transports      TEXT NOT NULL DEFAULT '[]',
+      backup_eligible INTEGER NOT NULL DEFAULT 0,
+      backed_up       INTEGER NOT NULL DEFAULT 0,
+      uv_initialized  INTEGER NOT NULL DEFAULT 0,
+      aaguid          TEXT NOT NULL DEFAULT '',
+      rp_id           TEXT NOT NULL,
+      name            TEXT NOT NULL,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at    TEXT
+    );
+
+    -- One row per passkey ceremony handed to a browser and not finished.
+    -- Like oauth_flows: the challenge and the cookie binding it to one
+    -- browser are kept as SHA-256 only, rows are single-use (deleted by the
+    -- statement that finds them) and short-lived (five minutes). purpose is
+    -- 'register', 'upgrade', 'signup' or 'login', so a challenge issued for
+    -- one ceremony can't finish another; user_id binds a registration to
+    -- the account that asked; username and user_handle carry a sign-up's
+    -- chosen name and new handle until the account exists. counted says
+    -- whether issuing it counted against the address's throttle, so a
+    -- completed sign-in gives back exactly what it took.
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+      challenge_hash TEXT PRIMARY KEY,
+      browser_hash   TEXT NOT NULL,
+      purpose        TEXT NOT NULL,
+      user_id        INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      user_handle    TEXT,
+      username       TEXT,
+      counted        INTEGER NOT NULL DEFAULT 0,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at     TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_passkeys_user ON passkeys(user_id);
+    CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_browser ON webauthn_challenges(browser_hash);
+    CREATE INDEX IF NOT EXISTS idx_identities_user ON user_identities(user_id);
     CREATE INDEX IF NOT EXISTS idx_skills_tree ON skills(tree_id);
     CREATE INDEX IF NOT EXISTS idx_prereqs_tree ON prereqs(tree_id);
     CREATE INDEX IF NOT EXISTS idx_prereqs_skill ON prereqs(skill_id);
@@ -137,6 +246,46 @@ function migrate(db) {
     `);
     console.log('Migrated: sessions are now stored hashed and expiring (everyone signed out).');
   }
+
+  // The WebAuthn user handle (Level 3 §14.6.1): random bytes that name the
+  // account to an authenticator, instead of its row id or username — both
+  // guessable, and the username public. Set the first time the account
+  // registers a passkey (or at a passkey sign-up), and never changed after:
+  // every passkey the account has carries it. An ADD COLUMN, not a rebuild —
+  // rebuilding users is the one migration this schema makes dangerous (see
+  // NO_PASSWORD in server.js) — plus a unique index, since SQLite can't add a
+  // column with UNIQUE; NULLs don't collide in it.
+  const userColumns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userColumns.includes('webauthn_user_id')) {
+    db.exec('ALTER TABLE users ADD COLUMN webauthn_user_id TEXT');
+    console.log('Migrated: added users.webauthn_user_id (the passkey user handle).');
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_webauthn_user_id ON users(webauthn_user_id)');
+
+  // The session list on the account page (ASVS V3.3.4) needs a handle for
+  // each session that is safe to show, and something to tell devices apart
+  // by. Added as columns, never by rebuilding: a rebuild signs everyone out,
+  // and nothing about how sessions are secured has changed. Read again here
+  // rather than reusing sessionColumns, which the rebuild above can outdate.
+  const liveSessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+  if (!liveSessionColumns.includes('public_id')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN public_id TEXT');
+    console.log('Migrated: added sessions.public_id.');
+  }
+  if (!liveSessionColumns.includes('user_agent')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''");
+    console.log('Migrated: added sessions.user_agent (existing sessions show as an unknown device).');
+  }
+  // Sessions that predate the column get their id here — from node:crypto,
+  // like every other id a caller can name, rather than SQLite's randomblob().
+  const unnamed = db.prepare('SELECT token_hash FROM sessions WHERE public_id IS NULL').all();
+  const nameSession = db.prepare('UPDATE sessions SET public_id = ? WHERE token_hash = ?');
+  for (const row of unnamed) nameSession.run(crypto.randomBytes(16).toString('hex'), row.token_hash);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_public_id ON sessions(public_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_trees_user ON trees(user_id);
+  `);
 }
 
 // This file holds users.password_hash. SQLite creates it — and the -wal/-shm

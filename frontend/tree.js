@@ -39,6 +39,46 @@ const MAX_VIEW_SIZE = 8000; // most zoomed out
 // server enforces that — this just keeps the page honest about it.
 let canEdit = false;
 
+// Keyboard access to the graph: which node is in the tab order, arrow-key
+// movement along links and down columns, keyboard pan and zoom. The model is
+// described in a11y.js; this supplies the tree it moves over. Ids arrive as
+// strings (they're read off data-skill-id) and this tree's are numbers.
+const graphKeys = createGraphKeyboard({
+  svg,
+  skills: () =>
+    tree ? tree.skills.map((s) => ({ id: s.id, name: s.name, x: s.pos_x, y: s.pos_y })) : [],
+  prereqsOf: (id) => prereqsOf(Number(id)),
+  unlocksOf: (id) => unlocksOf(Number(id)),
+  activate: (id) => {
+    const skill = skillById(Number(id));
+    if (skill) handleNodeClick(skill);
+  },
+  onFocus: (id) => onNodeFocus(Number(id)),
+  onBlur: (id) => onNodeBlur(Number(id)),
+  zoomBy: (factor) => viewBox && zoomAtCenter(factor),
+  fit: () => fitToContent(),
+  panBy: (fx, fy) => {
+    if (!viewBox) return;
+    viewBox.minX += fx * viewBox.w;
+    viewBox.minY += fy * viewBox.h;
+    applyViewBox();
+  },
+  panByPixels: (dx, dy) => {
+    const scale = 1 / svg.getScreenCTM().a;
+    viewBox.minX += dx * scale;
+    viewBox.minY += dy * scale;
+    applyViewBox();
+  },
+  obstacles: [
+    '.tree-overlay-topleft > *',
+    '.tree-overlay-topright',
+    '.tree-fullscreen-wrap .zoom-controls',
+    '.tree-fullscreen-wrap .legend',
+    '.graph-kbd-hint',
+    '.toast.show',
+  ],
+});
+
 init();
 
 async function init() {
@@ -60,6 +100,8 @@ async function init() {
   setupSidePanel();
   setupZoomAndPan();
   setupExportModal();
+  setupShare();
+  setupEscape();
   if (canEdit) setupHeaderEditing();
   watchDescriptionWidth(); // read-only trees need correct sizing too
   refitOnFontLoad();
@@ -86,6 +128,41 @@ function applyPermissions() {
         ? 'This tree was made before accounts existed, so it is read-only.'
         : `Read-only — ${tree ? tree.author : 'someone else'} made this tree.`;
   }
+  updateShareButton();
+}
+
+// ---------- sharing ----------
+
+// A draft has no address yet, so there's nothing to share until it's saved.
+function updateShareButton() {
+  document.getElementById('share-btn').hidden = !treeId || !tree || !tree.id;
+}
+
+// The system share sheet where there is one (phones, and desktop browsers on
+// Windows and macOS); everywhere else the link goes to the clipboard. Both
+// need the Permissions-Policy the server sends to allow them for this origin.
+function setupShare() {
+  const btn = document.getElementById('share-btn');
+  btn.addEventListener('click', async () => {
+    if (!treeId) return;
+    const url = `${location.origin}/tree.html?id=${treeId}`;
+    const data = { title: (tree && tree.title) || 'Skill tree', url };
+    if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+      try {
+        await navigator.share(data);
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return; // closed the sheet: nothing to do
+        // Refused outright (no permission, no share targets): copy instead.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Link copied to the clipboard.');
+    } catch (e) {
+      showToast(`Copy this link to share the tree: ${url}`);
+    }
+  });
 }
 
 // A new tree lives only in the browser until the first real edit.
@@ -111,6 +188,7 @@ async function loadTree() {
     tree = await apiFetch(`/trees/${treeId}`);
   } catch (e) {
     document.getElementById('tree-title').value = 'Tree not found';
+    document.getElementById('tree-heading').textContent = 'Tree not found';
     showToast(e.message);
     return;
   }
@@ -148,6 +226,7 @@ function renderHeader() {
   if (document.activeElement !== title) title.value = tree.title || '';
   if (document.activeElement !== desc) desc.value = tree.description || '';
   if (document.activeElement !== author) author.value = tree.author || '';
+  document.getElementById('tree-heading').textContent = tree.title || 'Untitled skill tree';
   growDescription();
   fitAuthorWidth();
 
@@ -261,6 +340,7 @@ function ensureSaved() {
         tree.created_at = created.created_at;
         // Reloading now lands on the saved tree rather than a blank draft.
         history.replaceState(null, '', `/tree.html?id=${created.id}`);
+        updateShareButton(); // it has an address now
         return created.id;
       })
       .catch((e) => {
@@ -281,9 +361,13 @@ async function saveHeader() {
 
   showSaveStatus('Saving…');
   try {
-    const existed = !!treeId;
+    // Only the call that starts the create has its values in that POST. One
+    // that arrives while the create is still in flight — typing on after the
+    // first save began — must PATCH once it lands, or its edits are lost
+    // while the page says "Saved".
+    const sentWithCreate = !treeId && !pendingCreate;
     await ensureSaved();
-    if (existed) {
+    if (!sentWithCreate) {
       await apiFetch(`/trees/${treeId}`, {
         method: 'PATCH',
         body: JSON.stringify({ title, description, author }),
@@ -417,7 +501,7 @@ function render() {
       );
 
   // Edges
-  edgesLayer.innerHTML = '';
+  edgesLayer.replaceChildren();
   tree.edges.forEach((edge, index) => {
     const from = skillById(edge.prereq_skill_id);
     const to = skillById(edge.skill_id);
@@ -448,8 +532,10 @@ function render() {
     edgesLayer.appendChild(hit);
   });
 
-  // Nodes
-  nodesLayer.innerHTML = '';
+  // Nodes. Rebuilding the layer destroys whichever node had focus, so note it
+  // first and hand focus back to its replacement at the end.
+  const refocusId = graphKeys.focusedId();
+  nodesLayer.replaceChildren();
   // Keep the dragging node rendered last so it floats above other nodes
   const sortedSkills = tree.skills.slice().sort((a, b) => {
     if (a.id === draggingSkillId) return 1;
@@ -489,13 +575,39 @@ function render() {
     sub.textContent = nPrereq === 0 ? '✦ Start here' : `Needs ${nPrereq} · Unlocks ${nUnlock}`;
     g.appendChild(sub);
 
+    graphKeys.decorate(g, skill, {
+      expanded: skill.id === selectedSkillId,
+      note: skill.id === linkSourceId ? 'chosen as the prerequisite' : '',
+    });
     attachNodeInteractions(g, skill);
     nodesLayer.appendChild(g);
   }
 
+  const count = tree.skills.length;
+  svg.setAttribute('aria-label', `Skill graph: ${count} skill${count === 1 ? '' : 's'}`);
+  graphKeys.sync(refocusId);
+
   if (selectedSkillId) {
     highlightGraphPath(selectedSkillId, tree, svg);
   }
+}
+
+// Keyboard focus lights up a skill's path the way hovering does, and in link
+// mode it previews the wire to the skill that would be linked.
+function onNodeFocus(id) {
+  const skill = skillById(id);
+  if (!skill) return;
+  if (linkMode && linkSourceId !== null && linkSourceId !== id) {
+    updateLinkWire({ x: skill.pos_x, y: skill.pos_y + NODE_H / 2 });
+    nodesLayer.querySelector(`g[data-skill-id="${id}"] .node-card`)?.classList.add('link-candidate-snap');
+  } else if (!linkMode) {
+    highlightGraphPath(id, tree, svg);
+  }
+}
+
+function onNodeBlur(id) {
+  nodesLayer.querySelector(`g[data-skill-id="${id}"] .node-card`)?.classList.remove('link-candidate-snap');
+  if (!linkMode) highlightGraphPath(selectedSkillId, tree, svg);
 }
 
 function truncate(str, n) {
@@ -619,7 +731,9 @@ function updateLinkWire(targetPt) {
   const source = skillById(linkSourceId);
   if (!source) return;
 
-  if (!linkWireEl) {
+  // render() empties the edge layer, which can leave this pointing at a wire
+  // that's no longer on the page.
+  if (!linkWireEl || !linkWireEl.isConnected) {
     linkWireEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     linkWireEl.setAttribute('id', 'link-preview-wire');
     linkWireEl.setAttribute('class', 'link-wire-preview');
@@ -715,16 +829,21 @@ function attachNodeInteractions(g, skill) {
 async function handleNodeClick(skill) {
   lastPlacedSkillId = skill.id;
   if (linkMode) {
+    // The hint says each step on screen; announce() says it to a screen
+    // reader, since choosing by keyboard gives no other feedback until the
+    // link is made.
     if (linkSourceId === null) {
       linkSourceId = skill.id;
       document.getElementById('toolbar-hint').textContent =
-        `"${skill.name}" selected as prerequisite. Now click the skill it unlocks.`;
+        `"${skill.name}" selected as prerequisite. Now click the skill it unlocks (or press Enter on it).`;
+      announce(`${skill.name} chosen as the prerequisite. Now choose the skill it unlocks.`);
       render();
       updateLinkWire({ x: skill.pos_x + NODE_W, y: skill.pos_y + NODE_H / 2 });
     } else if (linkSourceId === skill.id) {
       linkSourceId = null;
       updateLinkWire(null);
-      document.getElementById('toolbar-hint').textContent = 'Click the prerequisite skill first.';
+      document.getElementById('toolbar-hint').textContent = LINK_HINT;
+      announce('Prerequisite cleared. Choose the prerequisite skill first.');
       render();
     } else {
       updateLinkWire(null);
@@ -740,6 +859,8 @@ async function handleNodeClick(skill) {
   openSidePanel(skill);
   render();
 }
+
+const LINK_HINT = 'Click the prerequisite skill first (or Tab to it and press Enter). Esc cancels.';
 
 async function createLink(prereqId, skillId) {
   try {
@@ -799,6 +920,8 @@ async function createLink(prereqId, skillId) {
   }
 }
 
+// Reached by clicking an edge on the canvas, or — the keyboard's way to the
+// same thing — the remove buttons beside each link in the side panel.
 async function handleEdgeClick(edge) {
   if (!canEdit) return;
   const from = skillById(edge.prereq_skill_id);
@@ -808,7 +931,15 @@ async function handleEdgeClick(edge) {
   try {
     await apiFetch(`/prereqs/${edge.id}`, { method: 'DELETE' });
     await loadTree();
-    showToast('Link removed.');
+    // The open panel lists links, one of which just went away.
+    const shown = selectedSkillId && skillById(selectedSkillId);
+    if (shown) openSidePanel(shown, { focus: false });
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost) {
+      if (shown) document.getElementById('panel-name').focus();
+      else svg.focus();
+    }
+    showToast(`Link removed: ${label}.`);
   } catch (e) {
     showToast(e.message);
   }
@@ -831,7 +962,7 @@ function setLinkMode(enabled) {
     linkBtn.classList.toggle('linking-active', linkMode);
   }
   document.getElementById('toolbar-hint').textContent = linkMode
-    ? 'Click the prerequisite skill first.'
+    ? LINK_HINT
     : 'Click a skill for details, drag to move it. Scroll to zoom, drag the background to pan.';
   render();
 }
@@ -840,6 +971,11 @@ function setupToolbar() {
   const linkBtn = document.getElementById('link-mode-btn');
   linkBtn.addEventListener('click', () => {
     setLinkMode(!linkMode);
+    announce(
+      linkMode
+        ? 'Link mode. Choose the prerequisite skill, then the skill it unlocks. Escape cancels.'
+        : 'Linking cancelled.'
+    );
   });
 
   document.getElementById('delete-tree-btn').addEventListener('click', async () => {
@@ -948,20 +1084,18 @@ function setupZoomAndPan() {
 // ---------- add-skill modal ----------
 
 function setupModal() {
-  const overlay = document.getElementById('skill-modal-overlay');
+  const dialog = document.getElementById('skill-modal-overlay');
+  const modal = setupModalDialog(dialog);
   const openBtn = document.getElementById('add-skill-btn');
   const cancelBtn = document.getElementById('skill-cancel-btn');
   const form = document.getElementById('new-skill-form');
   const submitBtn = form.querySelector('button[type="submit"]');
 
   openBtn.addEventListener('click', () => {
-    overlay.hidden = false;
+    modal.open();
     document.getElementById('skill-name').focus();
   });
-  cancelBtn.addEventListener('click', () => (overlay.hidden = true));
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.hidden = true;
-  });
+  cancelBtn.addEventListener('click', () => modal.close());
 
   // Guards against a second submit firing (double-click, double-Enter)
   // before the first request's response has updated `tree.skills` — without
@@ -989,7 +1123,7 @@ function setupModal() {
         body: JSON.stringify({ name, description, pos_x: spot.x, pos_y: spot.y }),
       });
       lastPlacedSkillId = createdSkill.id;
-      overlay.hidden = true;
+      modal.close(); // focus goes back to "Add skill", ready for the next one
       form.reset();
       await loadTree();
       // If it had to go below/outside the tree or this is an early skill, make sure it's centered and on screen.
@@ -1007,7 +1141,8 @@ function setupModal() {
 // ---------- export ----------
 
 function setupExportModal() {
-  const overlay = document.getElementById('export-overlay');
+  const dialog = document.getElementById('export-overlay');
+  const modal = setupModalDialog(dialog);
   const openBtn = document.getElementById('export-btn');
   const cancelBtn = document.getElementById('export-cancel-btn');
   const form = document.getElementById('export-form');
@@ -1022,12 +1157,11 @@ function setupExportModal() {
     const mode = tree && tree.layout === 'auto' ? 'auto' : 'manual';
     const radio = form.querySelector(`input[value="${mode}"]`);
     if (radio) radio.checked = true;
-    overlay.hidden = false;
+    modal.open();
+    // Into the group at its current choice, not at whichever radio comes first.
+    if (radio) radio.focus();
   });
-  cancelBtn.addEventListener('click', () => (overlay.hidden = true));
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.hidden = true;
-  });
+  cancelBtn.addEventListener('click', () => modal.close());
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1062,7 +1196,7 @@ function setupExportModal() {
       a.remove();
       URL.revokeObjectURL(url);
 
-      overlay.hidden = true;
+      modal.close();
       showToast('Exported ' + filename);
     } catch (err) {
       showToast('Could not export: ' + err.message);
@@ -1073,14 +1207,39 @@ function setupExportModal() {
 // ---------- side panel ----------
 
 function setupSidePanel() {
-  document.getElementById('panel-close').addEventListener('click', closeSidePanel);
+  document.getElementById('panel-close').addEventListener('click', () => closeSidePanel());
 }
 
+// Escape backs out one step at a time: the details panel if it's open, else
+// link mode. Dialogs close on Escape by themselves, and nothing here fires
+// while someone is typing — Escape in the title field isn't "close".
+function setupEscape() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (document.querySelector('dialog[open]') || isTypingTarget(e.target)) return;
+    if (document.getElementById('side-panel').classList.contains('open')) {
+      e.preventDefault();
+      closeSidePanel();
+    } else if (linkMode) {
+      e.preventDefault();
+      setLinkMode(false);
+      announce('Linking cancelled.');
+    }
+  });
+}
+
+// If focus was inside the panel it goes back to the skill whose details these
+// were (or, if that skill has just been deleted, the next one along) — never
+// left behind in a panel that is no longer on screen.
 function closeSidePanel() {
+  const panel = document.getElementById('side-panel');
+  const focusWasInside = panel.contains(document.activeElement);
+  const shown = selectedSkillId;
   selectedSkillId = null;
   highlightGraphPath(null, tree, svg);
-  document.getElementById('side-panel').classList.remove('open');
+  panel.classList.remove('open');
   render();
+  if (focusWasInside && !(shown !== null && graphKeys.focusNode(shown))) graphKeys.focusGraph();
 }
 
 function panToSkill(skill) {
@@ -1090,11 +1249,12 @@ function panToSkill(skill) {
   const targetX = skill.pos_x + NODE_W / 2 - viewBox.w / 2;
   const targetY = skill.pos_y + NODE_H / 2 - viewBox.h / 2;
   const startTime = performance.now();
-  const duration = 280;
+  // No glide for anyone who has asked for less motion.
+  const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280;
 
   function step(now) {
     const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1);
+    const progress = duration ? Math.min(elapsed / duration, 1) : 1;
     const ease = 1 - Math.pow(1 - progress, 3);
     viewBox.minX = startX + (targetX - startX) * ease;
     viewBox.minY = startY + (targetY - startY) * ease;
@@ -1106,57 +1266,76 @@ function panToSkill(skill) {
   requestAnimationFrame(step);
 }
 
-function openSidePanel(skill) {
+// One row of the Requires / Unlocks lists: a button that jumps to the other
+// skill, and for the owner a second one that removes the link — the keyboard
+// route to what clicking an edge on the canvas does.
+function panelLinkRow(skill, otherId, edge) {
+  const other = skillById(otherId);
+  const li = document.createElement('li');
+  li.className = 'interactive';
+
+  const jump = document.createElement('button');
+  jump.type = 'button';
+  jump.className = 'panel-jump';
+  jump.textContent = other ? other.name : '(unknown)';
+  if (other) {
+    jump.title = 'Show this skill';
+    const preview = () => highlightGraphPath(other.id, tree, svg);
+    const unpreview = () => highlightGraphPath(skill.id, tree, svg);
+    jump.addEventListener('mouseenter', preview);
+    jump.addEventListener('mouseleave', unpreview);
+    jump.addEventListener('focus', preview);
+    jump.addEventListener('blur', unpreview);
+    jump.addEventListener('click', () => {
+      panToSkill(other);
+      selectedSkillId = other.id;
+      openSidePanel(other);
+      render();
+    });
+  } else {
+    jump.disabled = true;
+  }
+  li.appendChild(jump);
+
+  if (canEdit && edge) {
+    const from = skillById(edge.prereq_skill_id);
+    const to = skillById(edge.skill_id);
+    const unlink = document.createElement('button');
+    unlink.type = 'button';
+    unlink.className = 'panel-unlink';
+    unlink.append(buildElement('span', { attrs: { 'aria-hidden': 'true' } }, '×'));
+    unlink.title = 'Remove this link';
+    unlink.setAttribute(
+      'aria-label',
+      `Remove the link: ${from ? from.name : 'prerequisite'} before ${to ? to.name : 'skill'}`
+    );
+    unlink.addEventListener('click', () => handleEdgeClick(edge));
+    li.appendChild(unlink);
+  }
+  return li;
+}
+
+function openSidePanel(skill, { focus = true } = {}) {
   highlightGraphPath(skill.id, tree, svg);
   document.getElementById('panel-name').textContent = skill.name;
   document.getElementById('panel-desc').textContent = skill.description || 'No description.';
 
   const prereqList = document.getElementById('panel-prereqs');
-  prereqList.innerHTML = '';
-  const prereqIds = prereqsOf(skill.id);
-  if (prereqIds.length === 0) {
-    prereqList.innerHTML = '<li style="color:var(--text-muted)">None — this is a starting skill.</li>';
+  prereqList.replaceChildren();
+  const prereqEdges = tree.edges.filter((e) => e.skill_id === skill.id);
+  if (prereqEdges.length === 0) {
+    prereqList.append(buildElement('li', { className: 'panel-empty' }, 'None — this is a starting skill.'));
   } else {
-    for (const id of prereqIds) {
-      const s = skillById(id);
-      const li = document.createElement('li');
-      li.className = 'interactive';
-      li.textContent = s ? s.name : '(unknown)';
-      if (s) {
-        li.title = 'Click to jump to this skill';
-        li.addEventListener('mouseenter', () => highlightGraphPath(s.id, tree, svg));
-        li.addEventListener('mouseleave', () => highlightGraphPath(skill.id, tree, svg));
-        li.addEventListener('click', () => {
-          panToSkill(s);
-          openSidePanel(s);
-        });
-      }
-      prereqList.appendChild(li);
-    }
+    for (const edge of prereqEdges) prereqList.appendChild(panelLinkRow(skill, edge.prereq_skill_id, edge));
   }
 
   const unlockList = document.getElementById('panel-unlocks');
-  unlockList.innerHTML = '';
-  const unlockIds = unlocksOf(skill.id);
-  if (unlockIds.length === 0) {
-    unlockList.innerHTML = '<li style="color:var(--text-muted)">Nothing yet.</li>';
+  unlockList.replaceChildren();
+  const unlockEdges = tree.edges.filter((e) => e.prereq_skill_id === skill.id);
+  if (unlockEdges.length === 0) {
+    unlockList.append(buildElement('li', { className: 'panel-empty' }, 'Nothing yet.'));
   } else {
-    for (const id of unlockIds) {
-      const s = skillById(id);
-      const li = document.createElement('li');
-      li.className = 'interactive';
-      li.textContent = s ? s.name : '(unknown)';
-      if (s) {
-        li.title = 'Click to jump to this skill';
-        li.addEventListener('mouseenter', () => highlightGraphPath(s.id, tree, svg));
-        li.addEventListener('mouseleave', () => highlightGraphPath(skill.id, tree, svg));
-        li.addEventListener('click', () => {
-          panToSkill(s);
-          openSidePanel(s);
-        });
-      }
-      unlockList.appendChild(li);
-    }
+    for (const edge of unlockEdges) unlockList.appendChild(panelLinkRow(skill, edge.skill_id, edge));
   }
 
   const deleteBtn = document.getElementById('panel-delete-btn');
@@ -1167,11 +1346,14 @@ function openSidePanel(skill) {
       await apiFetch(`/skills/${skill.id}`, { method: 'DELETE' });
       closeSidePanel();
       await loadTree();
-      showToast('Skill deleted.');
+      showToast(`Skill deleted: ${skill.name}.`);
     } catch (e) {
       showToast(e.message);
     }
   };
 
   document.getElementById('side-panel').classList.add('open');
+  // Into the panel at its heading, so a screen reader starts with the name of
+  // the skill; Escape or the close button brings focus back to the graph.
+  if (focus) document.getElementById('panel-name').focus();
 }

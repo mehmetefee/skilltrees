@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>You're offline — Skill Trees</title>
+<meta name="description" content="Skill Trees can't be reached right now. Trees you have opened before are still readable." />
+<!-- Only ever shown in place of a page that couldn't be loaded; not a page
+     of its own for search results. -->
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#f6f8fa" />
+<meta name="color-scheme" content="light" />
+<link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta property="og:site_name" content="Skill Trees" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="You're offline — Skill Trees" />
+<meta property="og:description" content="Skill Trees can't be reached right now." />
+<!--@page-urls-->
+<script src="/trusted-types.js"></script>
+<script src="/theme.js"></script>
+<script src="/pwa.js" defer></script>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <!-- The service worker (sw.js) answers with this page when a page can't
+       be fetched and has no saved copy. The address bar still shows the
+       page that was asked for, so every link here is absolute, and "Try
+       again" — an empty href — is that same address, loaded again. -->
+  <main id="main" class="container" tabindex="-1">
+    <div class="page-header">
+      <div>
+        <h1>You're offline</h1>
+        <p>This page hasn't been saved for reading offline, and Skill Trees can't be reached right now.</p>
+      </div>
+    </div>
+
+    <p style="max-width: 62ch;">
+      Trees you have opened on this device before are still readable, and so is the list of trees
+      on the homepage. Making or changing a tree, and signing in, wait until you're back online.
+    </p>
+
+    <p style="display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5);">
+      <a class="btn" href="">Try again</a>
+      <a class="btn" href="/">Go to the homepage</a>
+    </p>
+  </main>
+</body>
+</html>

@@ -4,11 +4,27 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sign in — Skill Trees</title>
+<meta name="description" content="Sign in to Skill Trees to make skill trees of your own. Reading every tree needs no account." />
+<meta name="theme-color" content="#f6f8fa" />
+<meta name="color-scheme" content="light" />
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta property="og:site_name" content="Skill Trees" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Sign in — Skill Trees" />
+<meta property="og:description" content="Sign in to Skill Trees to make skill trees of your own." />
+<!-- canonical, og:url and og:image: absolute, so only with PUBLIC_ORIGIN. -->
+<!--@page-urls-->
+<script src="/trusted-types.js"></script>
 <script src="/theme.js"></script>
+<script src="/pwa.js" defer></script>
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <main id="main" tabindex="-1">
   <div class="container">
     <a class="back-link" href="/#browse">&larr; All trees</a>
 
@@ -19,12 +35,38 @@
       </div>
     </div>
 
-    <div class="auth-card">
+    <!-- Why a sign-in through another provider didn't finish (?oauth_error=).
+         Filled from a fixed list with textContent: nothing the provider or the
+         URL says is ever rendered as markup. -->
+    <div id="oauth-error" class="import-problems account-notice" role="alert" hidden></div>
+
+    <!-- Signed out: a button per configured provider, then the password form.
+         Both views start hidden; app.js shows the right one once it knows
+         whether anyone is signed in, so neither flashes up for the wrong person. -->
+    <div class="auth-card" id="sign-in-view" hidden>
+      <!-- Sign in with a passkey: shown by passkeys.js when the server has
+           passkeys on and this browser can use them. -->
+      <div id="passkey-sign-in" class="passkey-sign-in" hidden>
+        <button type="button" class="btn btn-provider btn-passkey" id="passkey-sign-in-button">Sign in with a passkey</button>
+      </div>
+      <div id="oauth-providers" class="oauth-providers" hidden></div>
+      <div id="oauth-divider" class="auth-divider" hidden><span>or</span></div>
+
       <form id="auth-form">
         <div class="field">
           <label for="auth-username">Username</label>
-          <input id="auth-username" type="text" maxlength="40" required autocomplete="username"
+          <!-- "webauthn" lets the browser offer passkeys in this field's
+               autofill (conditional mediation); passkeys.js swaps it out
+               while the form is for creating an account. -->
+          <input id="auth-username" type="text" maxlength="40" required autocomplete="username webauthn"
             autofocus placeholder="letters, numbers, dash or underscore" />
+        </div>
+        <!-- Creating an account: a passkey instead of a password, for the
+             username above. Shown by passkeys.js, in that mode only. -->
+        <div id="passkey-sign-up" class="passkey-sign-up" hidden>
+          <button type="button" class="btn btn-provider btn-passkey" id="passkey-sign-up-button">Create account with a passkey</button>
+          <p class="passkey-note">No password to remember: your device's screen lock, fingerprint or face signs you in.</p>
+          <div class="auth-divider"><span>or choose a password</span></div>
         </div>
         <div class="field">
           <label for="auth-password">Password</label>
@@ -38,10 +80,159 @@
         </div>
       </form>
     </div>
+
+    <!-- Signed in: "Your account".
+         Each <section class="account-section"> is one self-contained panel with
+         its own heading, and owns everything inside it. New panels go in as
+         further sections inside #account-view, in the order they should
+         appear — the passkeys one is expected where marked below. -->
+    <div id="account-view" class="account-view" hidden>
+      <section class="account-section" id="account-overview" aria-labelledby="account-username">
+        <div class="account-overview">
+          <span class="user-avatar account-avatar" id="account-avatar" aria-hidden="true"></span>
+          <div class="account-overview-text">
+            <h2 id="account-username" class="account-username"></h2>
+            <p class="account-section-intro">Only this account can change the trees it made.</p>
+          </div>
+          <button type="button" class="btn" id="account-sign-out">Sign out</button>
+        </div>
+      </section>
+
+      <section class="account-section" id="account-sign-in-methods" aria-labelledby="sign-in-methods-heading">
+        <h2 id="sign-in-methods-heading">Sign-in methods</h2>
+        <p class="account-section-intro">The ways you can get back into this account. Keep at least one.</p>
+        <ul class="sign-in-methods" id="sign-in-methods-list"></ul>
+        <div id="sign-in-methods-error" class="import-problems" role="alert" hidden></div>
+      </section>
+
+      <!-- Passkeys: filled in by passkeys.js, and shown only when the server
+           has passkeys on. The id is what /.well-known/passkey-endpoints
+           points password managers at, so keep it. -->
+      <section class="account-section" id="account-passkeys" aria-labelledby="passkeys-heading" hidden>
+        <h2 id="passkeys-heading" tabindex="-1">Passkeys</h2>
+        <p class="account-section-intro">Sign in with your fingerprint, face or screen lock instead of a password. A passkey only works on this site, so it can't be phished or reused elsewhere.</p>
+        <ul class="sign-in-methods passkey-list" id="passkey-list"></ul>
+        <p class="passkey-empty" id="passkey-empty" hidden>No passkeys yet.</p>
+        <div id="passkey-error" class="import-problems" role="alert" hidden></div>
+        <div class="passkey-actions">
+          <button type="button" class="btn" id="passkey-add">Add a passkey</button>
+          <button type="button" class="btn" id="passkey-reauth" hidden>Sign in again</button>
+        </div>
+      </section>
+
+      <!-- The password, where you're signed in, your data, and deleting the
+           account: account-settings.js fills and drives these four. Every
+           message in them is written with textContent. The ids are linked
+           to: /account.html#account-password is where a password manager's
+           "change password" lands. -->
+      <section class="account-section" id="account-password" aria-labelledby="account-password-heading">
+        <h2 id="account-password-heading" tabindex="-1">Password</h2>
+        <p class="account-section-intro" id="account-password-intro">
+          Change the password you sign in with. Every other browser signed in to this account will be signed out.
+        </p>
+        <form id="password-form" class="account-form">
+          <!-- Tells a password manager which account the new password is for. -->
+          <input type="text" id="password-form-username" autocomplete="username" readonly hidden />
+          <div class="field" id="current-password-field">
+            <label for="current-password">Current password</label>
+            <input id="current-password" type="password" autocomplete="current-password" required
+              maxlength="4096" aria-describedby="password-error" />
+          </div>
+          <div class="field">
+            <label for="new-password">New password</label>
+            <input id="new-password" type="password" autocomplete="new-password" required minlength="8"
+              maxlength="4096" aria-describedby="new-password-rules password-error" />
+            <p class="field-hint" id="new-password-rules">
+              At least 8 characters; a long passphrase is best, and no symbols or numbers are required.
+              Very common passwords, and ones containing your username, are refused.
+            </p>
+          </div>
+          <label class="check-field"><input type="checkbox" id="show-passwords" /> Show passwords</label>
+          <div id="password-error" class="import-problems" role="alert" hidden></div>
+          <div class="account-actions">
+            <button type="submit" class="btn" id="password-submit">Change password</button>
+            <button type="button" class="btn" id="password-reauth" hidden>Sign in again</button>
+          </div>
+          <p class="account-status" id="password-status" role="status"></p>
+        </form>
+      </section>
+
+      <section class="account-section" id="account-sessions" aria-labelledby="account-sessions-heading">
+        <h2 id="account-sessions-heading" tabindex="-1">Where you&rsquo;re signed in</h2>
+        <p class="account-section-intro">
+          Every browser signed in to this account. If you don&rsquo;t recognise one, end it, then change your password.
+        </p>
+        <ul class="session-list" id="session-list" aria-labelledby="account-sessions-heading"></ul>
+        <div id="sessions-error" class="import-problems" role="alert" hidden></div>
+        <div class="account-actions">
+          <button type="button" class="btn btn-small" id="sessions-revoke-others" hidden>Sign out everywhere else</button>
+          <button type="button" class="btn btn-small" id="sessions-reauth" hidden>Sign in again</button>
+        </div>
+        <p class="account-status" id="sessions-status" role="status"></p>
+      </section>
+
+      <section class="account-section" id="account-data" aria-labelledby="account-data-heading">
+        <h2 id="account-data-heading" tabindex="-1">Your data</h2>
+        <p class="account-section-intro">
+          Everything this site holds about your account &mdash; your trees, the sign-ins connected to it and
+          where it is signed in &mdash; as one JSON file. Each tree in it can be imported again.
+        </p>
+        <div id="data-error" class="import-problems" role="alert" hidden></div>
+        <div class="account-actions">
+          <button type="button" class="btn" id="data-download">Download my data</button>
+        </div>
+        <p class="account-status" id="data-status" role="status"></p>
+      </section>
+
+      <section class="account-section account-danger" id="account-danger" aria-labelledby="account-danger-heading">
+        <h2 id="account-danger-heading" tabindex="-1">Delete account</h2>
+        <p class="account-section-intro" id="delete-summary">
+          Deleting your account also deletes every tree it made, for everyone, straight away. It can&rsquo;t be undone.
+        </p>
+        <p class="account-section-intro">
+          Want to keep your trees? <a href="#account-data">Download your data</a> first: each tree in it can be
+          imported again, here or anywhere that reads the format.
+        </p>
+        <div class="account-actions">
+          <button type="button" class="btn btn-danger" id="delete-open">Delete account&hellip;</button>
+        </div>
+
+        <dialog class="modal account-dialog" id="delete-dialog" aria-labelledby="delete-title"
+          aria-describedby="delete-help" closedby="any">
+          <h2 id="delete-title">Delete your account?</h2>
+          <p class="modal-subtitle" id="delete-help"></p>
+          <form id="delete-form">
+            <div class="field">
+              <label for="delete-confirm-username">Type your username, <strong id="delete-username"></strong>, to confirm</label>
+              <input id="delete-confirm-username" type="text" required maxlength="40" autocomplete="off"
+                autocapitalize="off" spellcheck="false" aria-describedby="delete-error" />
+            </div>
+            <div class="field" id="delete-password-field">
+              <label for="delete-password">Your password</label>
+              <input id="delete-password" type="password" required maxlength="4096"
+                autocomplete="current-password" aria-describedby="delete-error" />
+            </div>
+            <div id="delete-error" class="import-problems" role="alert" hidden></div>
+            <div class="modal-actions">
+              <button type="button" class="btn" id="delete-cancel">Cancel</button>
+              <button type="button" class="btn" id="delete-reauth" hidden>Sign in again</button>
+              <button type="submit" class="btn btn-danger btn-danger-solid" id="delete-submit">Delete account and trees</button>
+            </div>
+          </form>
+        </dialog>
+      </section>
+    </div>
   </div>
+  </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <!-- a11y.js for setupModalDialog(), which the delete confirmation uses. -->
+  <script src="/a11y.js"></script>
+  <!-- Before app.js, so its listeners are in place before app.js decides
+       which view to show (the account:* events). -->
+  <script src="/passkeys.js"></script>
   <script src="/app.js"></script>
+  <script src="/account-settings.js"></script>
 </body>
 </html>

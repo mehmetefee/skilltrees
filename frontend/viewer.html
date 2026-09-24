@@ -4,23 +4,38 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Skill Tree Viewer</title>
+<meta name="description" content="Open a skill tree file and explore it in your browser, without publishing it." />
+<meta name="theme-color" content="#f6f8fa" />
+<meta name="color-scheme" content="light" />
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta property="og:site_name" content="Skill Trees" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Skill Tree Viewer" />
+<meta property="og:description" content="Open a skill tree file and explore it in your browser, without publishing it." />
+<!-- canonical, og:url and og:image: absolute, so only with PUBLIC_ORIGIN. -->
+<!--@page-urls-->
+<script src="/trusted-types.js"></script>
 <script src="/theme.js"></script>
+<script src="/pwa.js" defer></script>
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="tree-fullscreen-wrap" id="viewer-wrap">
+  <a class="skip-link" href="#viewer-svg">Skip to the skill graph</a>
+
+  <main class="tree-fullscreen-wrap" id="viewer-wrap">
     <!-- Top-left info overlay -->
     <div class="tree-overlay-topleft">
-      <a class="back-link" href="/#browse">&larr; All trees</a>
-      <h1 id="viewer-title" class="tree-title" style="margin: 0 0 4px; font-size: 24px;"></h1>
+      <a class="back-link" href="/#browse"><span aria-hidden="true">&larr;</span> All trees</a>
+      <h1 id="viewer-title" class="tree-title" tabindex="-1" style="margin: 0 0 4px; font-size: 24px;">Skill tree viewer</h1>
       <p id="viewer-desc" class="tree-desc" style="margin: 0 0 6px;"></p>
       <div class="meta" id="viewer-meta"></div>
       <p class="hint-bar" id="viewer-hint">Click a skill to see details. Drag to reposition.</p>
     </div>
 
     <!-- Top-right actions -->
-    <div class="tree-overlay-topright">
+    <div class="tree-overlay-topright" role="group" aria-label="Viewer actions">
       <input type="file" id="viewer-file-input" accept=".json,application/json" hidden />
       <button class="btn" id="viewer-open-btn">Open JSON</button>
       <button class="btn btn-primary" id="viewer-publish-btn">Publish to site</button>
@@ -30,13 +45,14 @@
 
     <!-- Zoom controls -->
     <div class="zoom-controls" role="group" aria-label="Zoom controls">
-      <button class="btn btn-small" id="viewer-zoom-in" title="Zoom in">+</button>
-      <button class="btn btn-small" id="viewer-zoom-out" title="Zoom out">&minus;</button>
-      <button class="btn btn-small" id="viewer-zoom-fit" title="Fit to screen">Fit</button>
+      <button class="btn btn-small" id="viewer-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button class="btn btn-small" id="viewer-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <button class="btn btn-small" id="viewer-zoom-fit" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
     </div>
 
     <!-- Graph SVG -->
-    <svg id="viewer-svg" width="100%" height="100%">
+    <svg id="viewer-svg" width="100%" height="100%" tabindex="0" role="group"
+      aria-label="Skill graph" aria-describedby="graph-help">
       <defs>
         <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
           <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--locked)"></polygon>
@@ -45,62 +61,75 @@
           <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--accent)"></polygon>
         </marker>
         <marker id="arrowhead-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="#10b981"></polygon>
+          <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--unlocks)"></polygon>
         </marker>
       </defs>
       <g id="edges-layer"></g>
       <g id="nodes-layer"></g>
     </svg>
-
-    <!-- Empty / Dropzone overlay when no tree is loaded -->
-    <div id="viewer-empty" class="modal-overlay" hidden>
-      <div class="modal" style="text-align: center;">
-        <h2>Open a Skill Tree</h2>
-        <p class="modal-subtitle">
-          Select a skill tree JSON file or paste its contents to view it locally without publishing.
-        </p>
-        <div class="field">
-          <input type="file" id="modal-file-input" accept=".json,application/json" style="margin-bottom: 12px;" />
-          <textarea id="modal-text-input" rows="7" spellcheck="false"
-            style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"
-            placeholder='Or paste skill tree JSON here...'></textarea>
-        </div>
-        <div id="modal-problems" class="import-problems" hidden></div>
-        <div class="modal-actions" style="justify-content: center; margin-top: 16px;">
-          <a href="/#browse" class="btn">Back to browse</a>
-          <button type="button" class="btn btn-primary" id="modal-load-btn">Load in viewer</button>
-        </div>
-      </div>
+    <p class="visually-hidden" id="graph-help">
+      Arrow keys pan the graph, plus and minus zoom, 0 fits it to the screen.
+      Press Tab to reach the skills: on a skill, left and right arrows follow its
+      prerequisites and what it unlocks, up and down step through the skills
+      column by column, Enter or Space opens its details, and Escape closes them.
+    </p>
+    <div class="graph-kbd-hint" aria-hidden="true">
+      <span class="kbd-canvas"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> pan
+        &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom &middot; <kbd>0</kbd> fit &middot; <kbd>Tab</kbd> to the skills</span>
+      <span class="kbd-node"><kbd>&larr;</kbd><kbd>&rarr;</kbd> follow links &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> next skill
+        &middot; <kbd>Enter</kbd> details &middot; <kbd>Esc</kbd> close &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom</span>
     </div>
 
     <!-- Bottom legend -->
     <div class="legend">
-      <span><span class="swatch locked"></span>Has prerequisites</span>
-      <span><span class="swatch unlocked"></span>Start here (no prerequisites)</span>
+      <span><span class="swatch locked" aria-hidden="true"></span>Has prerequisites</span>
+      <span><span class="swatch unlocked" aria-hidden="true"></span>Start here (no prerequisites)</span>
     </div>
-
-    <!-- Bottom hint -->
-  </div>
+  </main>
 
   <!-- Side panel: skill details -->
-  <div class="side-panel" id="side-panel">
+  <aside class="side-panel" id="side-panel" aria-labelledby="panel-name">
     <button class="close-btn" id="panel-close" aria-label="Close details panel">&times;</button>
-    <h2 id="panel-name"></h2>
+    <h2 id="panel-name" tabindex="-1"></h2>
     <p id="panel-desc" style="color: var(--text-muted); font-size: 14px;"></p>
 
     <div class="panel-section">
-      <h3>Requires</h3>
-      <ul class="prereq-list" id="panel-prereqs"></ul>
+      <h3 id="panel-prereqs-heading">Requires</h3>
+      <ul class="prereq-list" id="panel-prereqs" aria-labelledby="panel-prereqs-heading"></ul>
     </div>
     <div class="panel-section">
-      <h3>Unlocks</h3>
-      <ul class="unlock-list" id="panel-unlocks"></ul>
+      <h3 id="panel-unlocks-heading">Unlocks</h3>
+      <ul class="unlock-list" id="panel-unlocks" aria-labelledby="panel-unlocks-heading"></ul>
     </div>
-  </div>
+  </aside>
+
+  <!-- Shown when no tree is loaded. Dismissable like any other dialog: the
+       toolbar's "Open JSON" and dropping a file both still work without it. -->
+  <dialog id="viewer-empty" class="modal" aria-labelledby="viewer-empty-title" aria-describedby="viewer-empty-help"
+    closedby="any" style="text-align: center;">
+    <h2 id="viewer-empty-title">Open a skill tree</h2>
+    <p class="modal-subtitle" id="viewer-empty-help">
+      Select a skill tree JSON file or paste its contents to view it locally without publishing.
+    </p>
+    <div class="field" style="text-align: left;">
+      <label for="modal-file-input">From a file</label>
+      <input type="file" id="modal-file-input" accept=".json,application/json" style="margin-bottom: 12px;" />
+      <label for="modal-text-input">Or paste it here</label>
+      <textarea id="modal-text-input" rows="7" spellcheck="false" autocomplete="off" autocapitalize="off" autofocus
+        style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"
+        placeholder='{ "format": "skilltree", "version": 1, … }'></textarea>
+    </div>
+    <div id="modal-problems" class="import-problems" role="alert" hidden></div>
+    <div class="modal-actions" style="justify-content: center; margin-top: 16px;">
+      <a href="/#browse" class="btn">Back to browse</a>
+      <button type="button" class="btn btn-primary" id="modal-load-btn">Load in viewer</button>
+    </div>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="/layout.js"></script>
+  <script src="/a11y.js"></script>
   <script src="/app.js"></script>
   <script src="/viewer.js"></script>
 </body>

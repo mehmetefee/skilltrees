@@ -2,19 +2,48 @@
 
 const API = '/api';
 
+// The toast is also the page's polite live region (role="status"), so every
+// result shown here — link added, skill deleted, save failed — is read out.
 function showToast(msg) {
   const toast = document.getElementById('toast');
   if (!toast) return;
-  toast.textContent = msg;
-  toast.classList.add('show');
+  const write = () => {
+    toast.textContent = msg;
+    toast.classList.remove('toast-top');
+    toast.classList.add('show');
+    // Never on top of whatever has focus (WCAG 2.4.11): along the bottom edge
+    // it can land squarely on a focused skill or button, so in that case it
+    // shows at the top instead.
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && !toast.contains(focused)) {
+      const a = focused.getBoundingClientRect();
+      const b = toast.getBoundingClientRect();
+      if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) {
+        toast.classList.add('toast-top');
+      }
+    }
+  };
+  // A live region only speaks when its text changes, so the same message
+  // twice in a row is cleared first and written a beat later.
+  if (toast.textContent === msg) {
+    toast.textContent = '';
+    setTimeout(write, 50);
+  } else {
+    write();
+  }
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toast.classList.remove('show'), 2400);
+  // Long enough to read, and longer for longer messages (an error with its
+  // reason attached is more than a glance).
+  showToast._t = setTimeout(() => toast.classList.remove('show'), Math.max(3000, msg.length * 70));
 }
 
-async function apiFetch(path, opts) {
+async function apiFetch(path, opts = {}) {
+  // Headers are merged, not replaced: a caller that passes a header of its
+  // own must not silently lose the Content-Type, which the server insists on
+  // for any request with a body (415 otherwise).
   const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
     ...opts,
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
   let data = null;
   try { data = await res.json(); } catch (e) { /* no body */ }
@@ -22,6 +51,38 @@ async function apiFetch(path, opts) {
     throw new Error((data && data.error) || `Request failed (${res.status})`);
   }
   return data;
+}
+
+// --- building markup ---
+//
+// Pages require Trusted Types (trusted-types.js), so innerHTML and the other
+// HTML sinks throw on a plain string — even an empty one — and there is no
+// policy that would turn one into markup. Everything shown is built as nodes
+// instead: text goes in as a text node and is never parsed, so a tree called
+// `<img src=x onerror=...>` is shown as exactly those characters. These two
+// keep that short:
+//
+//   buildElement('li', { className: 'panel-empty' }, 'Nothing yet.')
+//
+// Props are assigned as properties (className, href, title, id, type...);
+// `attrs` holds the ones set as attributes — role, aria-*, data-*. Children
+// are nodes or strings, appended in order. SVG takes everything as attributes:
+// its geometry properties are read-only animated values, not numbers.
+function buildElement(tag, props = {}, ...children) {
+  const { attrs = {}, ...properties } = props;
+  const node = Object.assign(document.createElement(tag), properties);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  node.append(...children);
+  return node;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function buildSvgElement(tag, attrs = {}, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  node.append(...children);
+  return node;
 }
 
 // --- theme switch ---
@@ -64,17 +125,25 @@ function renderAuthSlots() {
       : (location.pathname + location.search + (location.hash || ''));
     const next = encodeURIComponent(targetPath);
 
-    slot.innerHTML = signedInUser
-      ? `<div class="user-chip" title="Signed in as ${escapeHtml(signedInUser.username)}" aria-label="Signed in as ${escapeHtml(signedInUser.username)}">` +
-        `<span class="user-avatar" aria-hidden="true">${escapeHtml(signedInUser.username.charAt(0).toUpperCase())}</span>` +
-        `<span class="auth-name">${escapeHtml(signedInUser.username)}</span>` +
-        `<button type="button" class="user-signout-btn" data-sign-out title="Sign out" aria-label="Sign out of ${escapeHtml(signedInUser.username)}">Sign out</button>` +
-        `</div>`
-      : `<a href="/account.html?next=${next}" class="btn btn-signin">Sign in</a>`;
-  }
+    if (!signedInUser) {
+      slot.replaceChildren(
+        buildElement('a', { href: `/account.html?next=${next}`, className: 'btn btn-signin' }, 'Sign in')
+      );
+      continue;
+    }
 
-  for (const btn of document.querySelectorAll('[data-sign-out]')) {
-    btn.addEventListener('click', async () => {
+    const name = signedInUser.username;
+    const signOut = buildElement(
+      'button',
+      {
+        type: 'button',
+        className: 'user-signout-btn',
+        title: 'Sign out',
+        attrs: { 'data-sign-out': '', 'aria-label': `Sign out of ${name}` },
+      },
+      'Sign out'
+    );
+    signOut.addEventListener('click', async () => {
       try {
         await apiFetch('/auth/logout', { method: 'POST' });
       } catch (e) {
@@ -82,6 +151,18 @@ function renderAuthSlots() {
       }
       window.location.reload();
     });
+    // No aria-label on the chip: it is a plain div with no role, which ARIA
+    // prohibits naming (ARIA 1.2, "generic"), and the name and button inside
+    // already say who is signed in. The tooltip stays for pointer users.
+    slot.replaceChildren(
+      buildElement(
+        'div',
+        { className: 'user-chip', title: `Signed in as ${name}` },
+        buildElement('span', { className: 'user-avatar', attrs: { 'aria-hidden': 'true' } }, name.charAt(0).toUpperCase()),
+        buildElement('a', { className: 'auth-name', href: '/account.html', title: 'Your account' }, name),
+        signOut
+      )
+    );
   }
 }
 
@@ -110,7 +191,69 @@ function sameSitePath(next) {
   return url.pathname + url.search + url.hash;
 }
 
-function setupAccountPage() {
+// Why a sign-in through another provider came back without finishing. The
+// server only ever sends one of these codes — never the provider's own words
+// — and anything unrecognised gets the general line rather than being shown.
+const OAUTH_ERROR_MESSAGES = {
+  cancelled: 'Sign-in was cancelled at the provider, so nothing changed.',
+  expired:
+    'That sign-in expired, was already used, or was started in a different browser. Please start again from this page.',
+  failed: 'That sign-in could not be completed. Please try again.',
+  unavailable: 'That sign-in provider is not available right now. Please try again later.',
+  identity_taken:
+    'That account is already connected to a different Skill Trees account. Sign in to that one to disconnect it first.',
+  link_session: 'You were signed out before the connection finished. Sign in and try connecting again.',
+};
+
+async function loadProviders() {
+  try {
+    const list = await apiFetch('/auth/providers');
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Sends the browser to a provider. The start is a same-origin POST (the
+// server's Origin check guards it) and the page navigates to the URL it gets
+// back — a form posting here would be stopped by CSP form-action 'self' the
+// moment the answer redirected to another site.
+async function startOAuth(providerId, intent, next) {
+  const data = await apiFetch(`/auth/oauth/${encodeURIComponent(providerId)}/start`, {
+    method: 'POST',
+    body: JSON.stringify({ intent, next }),
+  });
+  // This string is about to become a navigation, so it must be a web URL.
+  const url = new URL(data.authorization_url);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('The sign-in provider sent an address this page will not open.');
+  }
+  window.location.assign(url.href);
+}
+
+function showNotice(box, message) {
+  box.textContent = '';
+  const strong = document.createElement('strong');
+  strong.textContent = message;
+  box.appendChild(strong);
+  box.hidden = false;
+}
+
+// Reads ?oauth_error= (and ?connected=) once, then takes them out of the
+// address bar so a reload doesn't show the message again. Keeps ?next=.
+function takeOAuthOutcome() {
+  const params = new URLSearchParams(location.search);
+  const error = params.get('oauth_error');
+  const connected = params.get('connected');
+  if (error === null && connected === null) return { error: null, connected: null };
+  params.delete('oauth_error');
+  params.delete('connected');
+  const rest = params.toString();
+  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  return { error, connected };
+}
+
+async function setupAccountPage() {
   const form = document.getElementById('auth-form');
   if (!form) return;
 
@@ -121,13 +264,11 @@ function setupAccountPage() {
   const errorBox = document.getElementById('auth-error');
   const username = document.getElementById('auth-username');
   const password = document.getElementById('auth-password');
+  const oauthError = document.getElementById('oauth-error');
 
   let mode = 'login';
 
-  const showError = (message) => {
-    errorBox.innerHTML = `<strong>${escapeHtml(message)}</strong>`;
-    errorBox.hidden = false;
-  };
+  const showError = (message) => showNotice(errorBox, message);
 
   const applyMode = () => {
     const signup = mode === 'signup';
@@ -139,6 +280,8 @@ function setupAccountPage() {
     toggle.textContent = signup ? 'I already have an account' : 'Create an account instead';
     password.autocomplete = signup ? 'new-password' : 'current-password';
     errorBox.hidden = true;
+    // passkeys.js shows the passkey option that fits the mode.
+    document.dispatchEvent(new CustomEvent('account:mode', { detail: { mode } }));
   };
 
   toggle.addEventListener('click', () => {
@@ -159,6 +302,12 @@ function setupAccountPage() {
         method: 'POST',
         body: JSON.stringify({ username: username.value.trim(), password: password.value }),
       });
+      // Signed in with a password: the browser may now offer to make a
+      // passkey without asking (an automatic upgrade). Never throws, and
+      // gives up quickly when there's nothing to do.
+      if (mode === 'login' && window.SkillTreePasskeys) {
+        await window.SkillTreePasskeys.afterPasswordSignIn();
+      }
       // Only ever back to a path on this site, decided by the URL parser
       // rather than by a pattern. A regex cannot be trusted here: the
       // browser strips ASCII tab and newline from a URL *after* any check
@@ -176,12 +325,200 @@ function setupAccountPage() {
   });
 
   applyMode();
+
+  const outcome = takeOAuthOutcome();
+  if (outcome.error !== null) {
+    showNotice(oauthError, OAUTH_ERROR_MESSAGES[outcome.error] || OAUTH_ERROR_MESSAGES.failed);
+  }
+
+  const [user, providers] = await Promise.all([loadSignedInUser(), loadProviders()]);
+  if (user) {
+    showAccountView(user, providers, outcome.connected);
+  } else {
+    showSignInView(providers);
+  }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str == null ? '' : String(str);
-  return div.innerHTML;
+// Signed out: "Continue with <provider>" for each configured one, above the
+// password form. With none configured the page is just the form, as before.
+function showSignInView(providers) {
+  const view = document.getElementById('sign-in-view');
+  const list = document.getElementById('oauth-providers');
+  const divider = document.getElementById('oauth-divider');
+  const oauthError = document.getElementById('oauth-error');
+
+  list.textContent = '';
+  for (const provider of providers) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-provider';
+    button.dataset.provider = provider.id;
+    button.textContent = `Continue with ${provider.name}`;
+    button.addEventListener('click', async () => {
+      for (const b of list.querySelectorAll('button')) b.disabled = true;
+      oauthError.hidden = true;
+      try {
+        // The server checks next again; this is the same rule as the form's.
+        const next = new URLSearchParams(location.search).get('next') || '';
+        await startOAuth(provider.id, 'login', sameSitePath(next));
+      } catch (err) {
+        showNotice(oauthError, err.message);
+        for (const b of list.querySelectorAll('button')) b.disabled = false;
+      }
+    });
+    list.appendChild(button);
+  }
+  list.hidden = divider.hidden = providers.length === 0;
+  view.hidden = false;
+  document.dispatchEvent(new CustomEvent('account:signed-out'));
+}
+
+// Signed in: the "Your account" panel.
+function showAccountView(user, providers, connected) {
+  const heading = document.getElementById('auth-heading');
+  heading.textContent = 'Your account';
+  document.title = 'Your account — Skill Trees';
+  document.getElementById('account-username').textContent = user.username;
+  document.getElementById('account-avatar').textContent = user.username.charAt(0).toUpperCase();
+
+  const signOut = document.getElementById('account-sign-out');
+  signOut.addEventListener('click', async () => {
+    signOut.disabled = true;
+    try {
+      await apiFetch('/auth/logout', { method: 'POST' });
+    } catch (e) {
+      /* signing out locally either way */
+    }
+    window.location.href = '/account.html';
+  });
+
+  document.getElementById('account-view').hidden = false;
+
+  if (connected) {
+    const provider = providers.find((p) => p.id === connected);
+    if (provider) showToast(`Connected ${provider.name}.`);
+  }
+  renderSignInMethods(user, providers);
+  // A way in was added or removed — a provider here, a passkey or the
+  // password further down: every section showing ways in redraws from the
+  // server, which decides what may be removed. `user` is shared with
+  // account-settings.js, so it is brought up to date rather than replaced.
+  document.addEventListener('account:methods-changed', async () => {
+    const fresh = await loadSignedInUser();
+    if (!fresh) return;
+    Object.assign(user, fresh);
+    renderSignInMethods(user, providers);
+  });
+  // The password, sessions, your data and deleting the account live in
+  // account-settings.js, which only account.html loads; passkeys in
+  // passkeys.js, which listens for this.
+  if (typeof setupAccountSettings === 'function') setupAccountSettings(user, providers);
+  document.dispatchEvent(new CustomEvent('account:signed-in', { detail: { user } }));
+}
+
+// "Sign-in methods": the password, each connected provider with Disconnect,
+// and a Connect for every configured provider not connected yet. The server
+// refuses to remove the last way in; the page only mirrors that so the
+// button doesn't invite a click that will be refused.
+async function renderSignInMethods(user, providers) {
+  const list = document.getElementById('sign-in-methods-list');
+  const errorBox = document.getElementById('sign-in-methods-error');
+
+  let identities = [];
+  try {
+    identities = await apiFetch('/auth/identities');
+  } catch (err) {
+    showNotice(errorBox, err.message);
+    return;
+  }
+
+  const passkeys = user.passkeys || 0;
+  const usable = (user.has_password ? 1 : 0) + identities.filter((i) => i.enabled).length + passkeys;
+
+  const row = (name, detail, action) => {
+    const li = document.createElement('li');
+    li.className = 'sign-in-method';
+    const text = document.createElement('div');
+    text.className = 'sign-in-method-text';
+    const title = document.createElement('span');
+    title.className = 'sign-in-method-name';
+    title.textContent = name;
+    const sub = document.createElement('span');
+    sub.className = 'sign-in-method-detail';
+    sub.textContent = detail;
+    text.append(title, sub);
+    li.appendChild(text);
+    if (action) li.appendChild(action);
+    list.appendChild(li);
+  };
+
+  const button = (label, className, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = className;
+    b.textContent = label;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      errorBox.hidden = true;
+      try {
+        await onClick();
+      } catch (err) {
+        showNotice(errorBox, err.message);
+        b.disabled = false;
+      }
+    });
+    return b;
+  };
+
+  list.textContent = '';
+
+  // Changing or setting it happens in its own section further down the page.
+  const toPassword = document.createElement('a');
+  toPassword.className = 'btn btn-small';
+  toPassword.href = '#account-password';
+  toPassword.textContent = user.has_password ? 'Change' : 'Set a password';
+  row(
+    'Password',
+    user.has_password
+      ? 'Set'
+      : passkeys > 0
+        ? 'Not set — you sign in with a passkey'
+        : 'Not set — you sign in through a provider below',
+    toPassword
+  );
+  // Passkeys, likewise, are managed in their own section.
+  if (passkeys > 0) {
+    const toPasskeys = document.createElement('a');
+    toPasskeys.className = 'btn btn-small';
+    toPasskeys.href = '#account-passkeys';
+    toPasskeys.textContent = 'Manage';
+    row('Passkeys', `${passkeys} passkey${passkeys === 1 ? '' : 's'}`, toPasskeys);
+  }
+
+  for (const identity of identities) {
+    const detail = [identity.display_name, `connected ${timeAgo(identity.created_at)}`];
+    if (!identity.enabled) detail.push('this provider is switched off here');
+    const last = identity.enabled && usable <= 1;
+    const disconnect = button('Disconnect', 'btn btn-small btn-danger', async () => {
+      await apiFetch(`/auth/identities/${encodeURIComponent(identity.id)}`, { method: 'DELETE' });
+      showToast(`Disconnected ${identity.provider_name}.`);
+      document.dispatchEvent(new CustomEvent('account:methods-changed'));
+    });
+    if (last) {
+      disconnect.disabled = true;
+      disconnect.title = 'This is your only way to sign in. Connect another first.';
+    }
+    row(identity.provider_name, detail.filter(Boolean).join(' · '), disconnect);
+  }
+
+  const connectedIds = new Set(identities.filter((i) => i.enabled).map((i) => i.provider));
+  for (const provider of providers) {
+    if (connectedIds.has(provider.id)) continue;
+    const connect = button('Connect', 'btn btn-small', () =>
+      startOAuth(provider.id, 'link', `/account.html?connected=${encodeURIComponent(provider.id)}`)
+    );
+    row(provider.name, 'Not connected', connect);
+  }
 }
 
 // An SVG path through a list of points, curved rather than kinked. Edges that
@@ -248,6 +585,17 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// An arrowhead for the end of an edge: the same <marker> the pages declare
+// statically in tree.html and viewer.html, built as nodes so a colour is only
+// ever an attribute's value.
+function arrowheadMarker(id, fill, points = '0 0.5, 6.5 3.5, 0 6.5') {
+  return buildSvgElement(
+    'marker',
+    { id, markerWidth: 7, markerHeight: 7, refX: 6, refY: 3.5, orient: 'auto', markerUnits: 'userSpaceOnUse' },
+    buildSvgElement('polygon', { points, fill })
+  );
+}
+
 function ensureArrowheadMarker(containerEl, colorHex) {
   const svg = containerEl.tagName && containerEl.tagName.toLowerCase() === 'svg'
     ? containerEl
@@ -257,26 +605,13 @@ function ensureArrowheadMarker(containerEl, colorHex) {
   const cleanHex = String(colorHex).replace(/[^a-zA-Z0-9]/g, '');
   const markerId = `arrowhead-dyn-${cleanHex}`;
 
-  let marker = svg.querySelector(`#${markerId}`);
-  if (!marker) {
+  if (!svg.querySelector(`#${markerId}`)) {
     let defs = svg.querySelector('defs');
     if (!defs) {
-      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      defs = buildSvgElement('defs');
       svg.insertBefore(defs, svg.firstChild);
     }
-    marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-    marker.setAttribute('id', markerId);
-    marker.setAttribute('markerWidth', '7');
-    marker.setAttribute('markerHeight', '7');
-    marker.setAttribute('refX', '6');
-    marker.setAttribute('refY', '3.5');
-    marker.setAttribute('orient', 'auto');
-    marker.setAttribute('markerUnits', 'userSpaceOnUse');
-    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    poly.setAttribute('points', '0 0, 7 3.5, 0 7');
-    poly.setAttribute('fill', colorHex);
-    marker.appendChild(poly);
-    defs.appendChild(marker);
+    defs.appendChild(arrowheadMarker(markerId, colorHex, '0 0, 7 3.5, 0 7'));
   }
   return `url(#${markerId})`;
 }
@@ -616,7 +951,7 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
       g.classList.add('highlight-node');
     } else if (downstreamNodes.has(sid)) {
       rect.classList.add('highlight-downstream');
-      rect.style.stroke = '#10b981';
+      rect.style.stroke = 'var(--unlocks)';
       rect.style.filter = 'drop-shadow(0 2px 8px rgba(16, 185, 129, 0.4))';
       g.classList.add('highlight-node');
     }
@@ -651,7 +986,7 @@ function highlightGraphPath(targetSkillId, treeData, containerEl) {
       path.style.markerEnd = ensureArrowheadMarker(containerEl, color);
     } else if (downstreamEdgeKeys.has(edgeKey)) {
       path.classList.add('path-downstream');
-      path.style.stroke = '#10b981';
+      path.style.stroke = 'var(--unlocks)';
       path.style.markerEnd = 'url(#arrowhead-green)';
     }
   });
@@ -683,7 +1018,7 @@ async function loadTrees() {
   try {
     const trees = await apiFetch('/trees');
     allTrees = trees;
-    grid.innerHTML = '';
+    grid.replaceChildren();
     if (trees.length === 0) {
       empty.hidden = false;
       await loadFeatured(null);
@@ -693,18 +1028,19 @@ async function loadTrees() {
     empty.hidden = true;
     for (let i = 0; i < trees.length; i++) {
       const tree = trees[i];
-      const card = document.createElement('a');
-      card.className = 'tree-card';
+      const card = buildElement(
+        'a',
+        { className: 'tree-card', href: `/tree.html?id=${tree.id}` },
+        buildElement('h3', {}, tree.title),
+        buildElement('p', {}, tree.description || 'No description yet.'),
+        buildElement(
+          'div',
+          { className: 'meta' },
+          buildElement('span', {}, `${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}`),
+          buildElement('span', {}, `by ${tree.author} · ${timeAgo(tree.created_at)}`)
+        )
+      );
       card.style.animationDelay = `${Math.min(i * 35, 350)}ms`;
-      card.href = `/tree.html?id=${tree.id}`;
-      card.innerHTML = `
-        <h3>${escapeHtml(tree.title)}</h3>
-        <p>${escapeHtml(tree.description || 'No description yet.')}</p>
-        <div class="meta">
-          <span>${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}</span>
-          <span>by ${escapeHtml(tree.author)} &middot; ${timeAgo(tree.created_at)}</span>
-        </div>
-      `;
       grid.appendChild(card);
     }
     await loadFeatured(trees.find((t) => t.featured) || null);
@@ -766,6 +1102,10 @@ async function loadFeatured(summary) {
       tree.description || 'No description yet.';
     document.getElementById('featured-meta').textContent =
       `${tree.skills.length} skill${tree.skills.length === 1 ? '' : 's'} · by ${tree.author} · ${timeAgo(tree.created_at)}`;
+    document.getElementById('featured-svg').setAttribute(
+      'aria-label',
+      `${tree.title}: graph of ${tree.skills.length} skill${tree.skills.length === 1 ? '' : 's'}`
+    );
 
     if (tree.layout === 'auto') {
       const laidOut = SkillTreeLayout.computeRoutes(
@@ -833,6 +1173,7 @@ function toFeaturedSvgPoint(evt) {
 }
 
 let featuredDraggingSkillId = null;
+let featuredKeys = null; // keyboard model for the hero graph, see setupFeaturedHero()
 
 // Full-screen rendering of the featured tree's graph. It's a display, not
 // the real editor (no add/link/delete), but zoom, pan, and node dragging all
@@ -841,30 +1182,26 @@ function renderFeatured() {
   const svg = document.getElementById('featured-svg');
   if (!svg || !featuredTree) return;
   const { NODE_W, NODE_H } = SkillTreeLayout;
+  const hadFocus = featuredKeys ? featuredKeys.focusedId() : null;
 
   applyFeaturedViewBox();
-  svg.innerHTML = '';
+  svg.replaceChildren();
   if (featuredTree.skills.length === 0) return;
 
-  const ns = 'http://www.w3.org/2000/svg';
+  // Marker definitions for arrowheads: the hero's <svg> starts empty, so it
+  // gets the three that tree.html and viewer.html declare in their markup.
+  svg.appendChild(
+    buildSvgElement(
+      'defs',
+      {},
+      arrowheadMarker('arrowhead', 'var(--locked)'),
+      arrowheadMarker('arrowhead-accent', 'var(--accent)'),
+      arrowheadMarker('arrowhead-green', 'var(--unlocks)')
+    )
+  );
 
-  // Marker definitions for arrowheads
-  const defs = document.createElementNS(ns, 'defs');
-  defs.innerHTML = `
-    <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--locked)"></polygon>
-    </marker>
-    <marker id="arrowhead-accent" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="var(--accent)"></polygon>
-    </marker>
-    <marker id="arrowhead-green" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-      <polygon points="0 0.5, 6.5 3.5, 0 6.5" fill="#10b981"></polygon>
-    </marker>
-  `;
-  svg.appendChild(defs);
-
-  const edgesLayer = document.createElementNS(ns, 'g');
-  const nodesLayer = document.createElementNS(ns, 'g');
+  const edgesLayer = document.createElementNS(SVG_NS, 'g');
+  const nodesLayer = document.createElementNS(SVG_NS, 'g');
 
   // Auto layouts already reserved a row for every edge that skips a column.
   // Manual coordinates are wherever the author left them — or wherever the
@@ -881,7 +1218,7 @@ function renderFeatured() {
     const from = featuredPositions.get(edge.prereq_skill_id);
     const to = featuredPositions.get(edge.skill_id);
     if (!from || !to) return;
-    const line = document.createElementNS(ns, 'path');
+    const line = document.createElementNS(SVG_NS, 'path');
     line.setAttribute(
       'd',
       edgePath([
@@ -906,11 +1243,11 @@ function renderFeatured() {
   for (const skill of sortedSkills) {
     const p = featuredPositions.get(skill.id);
     if (!p) continue;
-    const g = document.createElementNS(ns, 'g');
+    const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('transform', `translate(${p.x}, ${p.y})`);
     g.dataset.skillId = skill.id;
 
-    const rect = document.createElementNS(ns, 'rect');
+    const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('width', NODE_W);
     rect.setAttribute('height', NODE_H);
     rect.setAttribute('rx', 10);
@@ -919,7 +1256,7 @@ function renderFeatured() {
     rect.setAttribute('class', cls);
     g.appendChild(rect);
 
-    const label = document.createElementNS(ns, 'text');
+    const label = document.createElementNS(SVG_NS, 'text');
     label.setAttribute('x', 12);
     label.setAttribute('y', NODE_H / 2 + 5);
     label.setAttribute('class', 'node-label');
@@ -933,12 +1270,14 @@ function renderFeatured() {
       highlightGraphPath(null, featuredTree, svg);
     });
 
+    if (featuredKeys) featuredKeys.decorate(g, skill);
     attachFeaturedNodeDrag(g, skill, p);
     nodesLayer.appendChild(g);
   }
 
   svg.appendChild(edgesLayer);
   svg.appendChild(nodesLayer);
+  if (featuredKeys) featuredKeys.sync(hadFocus);
 }
 
 // Dragging a node repositions it on screen only — same as tree.js, nothing
@@ -1054,11 +1393,56 @@ function setupFeaturedHero() {
     }
   });
 
-  document.getElementById('featured-zoom-in').addEventListener('click', () => zoomFeaturedAtCenter(0.8));
-  document.getElementById('featured-zoom-out').addEventListener('click', () => zoomFeaturedAtCenter(1.25));
-  document.getElementById('featured-zoom-fit').addEventListener('click', () => {
+  const fitFeatured = () => {
     featuredViewBox = computeFeaturedBounds();
     applyFeaturedViewBox();
+  };
+  document.getElementById('featured-zoom-in').addEventListener('click', () => zoomFeaturedAtCenter(0.8));
+  document.getElementById('featured-zoom-out').addEventListener('click', () => zoomFeaturedAtCenter(1.25));
+  document.getElementById('featured-zoom-fit').addEventListener('click', fitFeatured);
+
+  // The same keyboard model as the editor (see a11y.js). A skill here is a
+  // link — Enter does what a click does, which is open the tree.
+  const edgeIds = (key, id, other) =>
+    featuredTree ? featuredTree.edges.filter((e) => String(e[key]) === id).map((e) => e[other]) : [];
+  featuredKeys = createGraphKeyboard({
+    svg,
+    role: 'link',
+    skills: () =>
+      featuredTree
+        ? featuredTree.skills.map((s) => {
+            const p = featuredPositions.get(s.id) || { x: 0, y: 0 };
+            return { id: s.id, name: s.name, x: p.x, y: p.y };
+          })
+        : [],
+    prereqsOf: (id) => edgeIds('skill_id', id, 'prereq_skill_id'),
+    unlocksOf: (id) => edgeIds('prereq_skill_id', id, 'skill_id'),
+    activate: () => {
+      if (featuredTree) window.location.href = `/tree.html?id=${featuredTree.id}`;
+    },
+    onFocus: (id) => highlightGraphPath(id, featuredTree, svg),
+    onBlur: () => highlightGraphPath(null, featuredTree, svg),
+    zoomBy: (f) => featuredViewBox && zoomFeaturedAtCenter(f),
+    fit: () => featuredViewBox && fitFeatured(),
+    panBy: (fx, fy) => {
+      if (!featuredViewBox) return;
+      featuredViewBox.minX += fx * featuredViewBox.w;
+      featuredViewBox.minY += fy * featuredViewBox.h;
+      applyFeaturedViewBox();
+    },
+    panByPixels: (dx, dy) => {
+      const scale = 1 / svg.getScreenCTM().a;
+      featuredViewBox.minX += dx * scale;
+      featuredViewBox.minY += dy * scale;
+      applyFeaturedViewBox();
+    },
+    obstacles: [
+      '.featured-hero-overlay > *',
+      '.featured-hero .zoom-controls',
+      '.featured-hero .graph-kbd-hint',
+      '.featured-scroll-hint',
+      '.site-header-actions > *',
+    ],
   });
 
   const scrollHint = document.getElementById('scroll-hint-btn');
@@ -1071,13 +1455,18 @@ function setupFeaturedHero() {
       scrollHint.style.display = '';
       const heroBottom = hero.offsetTop + hero.offsetHeight;
       const isPastHero = window.scrollY >= heroBottom - 120;
+      // Only touch the DOM when the state flips: this runs on every scroll
+      // event, and rewriting a focused link's contents drops its focus ring.
+      if (isPastHero === scrollHint.classList.contains('is-fixed')) return;
+      // The arrow is decoration; the words are the link's name.
+      const arrow = (glyph) => buildElement('span', { attrs: { 'aria-hidden': 'true' } }, glyph);
       if (isPastHero) {
         scrollHint.classList.add('is-fixed');
-        scrollHint.innerHTML = '&uarr; Featured tree';
+        scrollHint.replaceChildren(arrow('↑'), ' Featured tree');
         scrollHint.setAttribute('href', '#featured');
       } else {
         scrollHint.classList.remove('is-fixed');
-        scrollHint.innerHTML = 'Browse all trees &darr;';
+        scrollHint.replaceChildren('Browse all trees ', arrow('↓'));
         scrollHint.setAttribute('href', '#browse');
       }
     };
@@ -1206,45 +1595,85 @@ function setupFeaturedHero() {
   );
 }
 
-// --- Live search dropdown ---
+// --- Live search: an ARIA 1.2 combobox ---
+//
+// Focus never leaves the text field. The results are a listbox beside it,
+// and the one the arrow keys have reached is named by aria-activedescendant
+// rather than focused — so typing can carry on at any point, and a screen
+// reader hears the highlighted result as if it had focus.
+//
+//   Down / Up   open the list, then move through it (wrapping at the ends)
+//   Enter       open the highlighted tree
+//   Escape      close the list; pressed again, clear the field
 
 function setupSearch() {
   const input = document.getElementById('tree-search');
-  const dropdown = document.getElementById('search-dropdown');
+  const listbox = document.getElementById('search-dropdown');
+  const status = document.getElementById('search-status');
   if (!input) return;
 
   let activeIndex = -1;
   let matches = [];
 
+  const optionId = (i) => `search-option-${i}`;
+
+  const setOpen = (open) => {
+    listbox.hidden = !open;
+    input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) input.removeAttribute('aria-activedescendant');
+  };
+
   const close = () => {
-    dropdown.hidden = true;
-    dropdown.innerHTML = '';
+    setOpen(false);
+    listbox.replaceChildren();
     activeIndex = -1;
     matches = [];
   };
 
   const renderMatches = () => {
-    dropdown.innerHTML = '';
+    listbox.replaceChildren();
     matches.forEach((tree, i) => {
-      const item = document.createElement('div');
-      item.className = 'search-item' + (i === activeIndex ? ' active' : '');
-      item.innerHTML = `
-        <span class="search-item-title">${escapeHtml(tree.title)}</span>
-        <span class="search-item-meta">${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}</span>
-      `;
+      const item = buildElement(
+        'div',
+        {
+          id: optionId(i),
+          className: 'search-item' + (i === activeIndex ? ' active' : ''),
+          attrs: { role: 'option', 'aria-selected': i === activeIndex ? 'true' : 'false' },
+        },
+        buildElement('span', { className: 'search-item-title' }, tree.title),
+        buildElement('span', { className: 'search-item-meta' }, `${tree.skill_count} skill${tree.skill_count === 1 ? '' : 's'}`)
+      );
       item.addEventListener('mousedown', (e) => {
         e.preventDefault(); // don't let the input lose focus/blur-close before navigation
         window.location.href = `/tree.html?id=${tree.id}`;
       });
-      dropdown.appendChild(item);
+      listbox.appendChild(item);
     });
-    dropdown.hidden = matches.length === 0;
+    setOpen(matches.length > 0);
+    if (activeIndex >= 0) {
+      input.setAttribute('aria-activedescendant', optionId(activeIndex));
+      listbox.children[activeIndex].scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
   };
 
-  input.addEventListener('input', () => {
+  // How many results there are is said once typing pauses, not per key.
+  let statusTimer = null;
+  const reportCount = () => {
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => {
+      if (!input.value.trim()) status.textContent = '';
+      else if (matches.length === 0) status.textContent = 'No skill trees match.';
+      else status.textContent = `${matches.length} skill tree${matches.length === 1 ? '' : 's'} found.`;
+    }, 500);
+  };
+
+  const search = () => {
     const q = input.value.trim().toLowerCase();
     if (!q) {
       close();
+      reportCount();
       return;
     }
     matches = allTrees
@@ -1256,25 +1685,40 @@ function setupSearch() {
       .slice(0, 8);
     activeIndex = -1;
     renderMatches();
-  });
+    reportCount();
+  };
+
+  input.addEventListener('input', search);
 
   input.addEventListener('keydown', (e) => {
-    if (dropdown.hidden || matches.length === 0) return;
-    if (e.key === 'ArrowDown') {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const open = !listbox.hidden && matches.length > 0;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, matches.length - 1);
-      renderMatches();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
+      if (!open) {
+        search();
+        if (matches.length === 0) return;
+        activeIndex = e.key === 'ArrowDown' ? 0 : matches.length - 1;
+      } else if (e.key === 'ArrowDown') {
+        activeIndex = (activeIndex + 1) % matches.length;
+      } else {
+        activeIndex = activeIndex <= 0 ? matches.length - 1 : activeIndex - 1;
+      }
       renderMatches();
     } else if (e.key === 'Enter') {
-      if (activeIndex >= 0) {
+      if (open && activeIndex >= 0) {
         e.preventDefault();
         window.location.href = `/tree.html?id=${matches[activeIndex].id}`;
       }
     } else if (e.key === 'Escape') {
-      close();
+      if (open) {
+        e.preventDefault();
+        close();
+      } else if (input.value) {
+        e.preventDefault();
+        input.value = '';
+        reportCount();
+      }
     }
   });
 
@@ -1286,44 +1730,46 @@ function setupSearch() {
 
 function setupImportModal() {
   const openBtns = document.querySelectorAll('[data-open="import"]');
-  const overlay = document.getElementById('import-overlay');
+  const dialog = document.getElementById('import-overlay');
   const cancelBtn = document.getElementById('import-cancel-btn');
   const form = document.getElementById('import-form');
   const fileInput = document.getElementById('import-file');
   const textInput = document.getElementById('import-text');
   const problemsBox = document.getElementById('import-problems');
   const viewerBtn = document.getElementById('import-viewer-btn');
-  if (!openBtns.length) return;
+  if (!openBtns.length || !dialog) return;
+  const modal = setupModalDialog(dialog);
 
+  // The server's problems quote the file being imported — names, slugs,
+  // whatever was pasted — so each one goes in as text, never as markup.
+  // (A loop rather than a spread: the list isn't capped, and a spread passes
+  // every item as an argument.)
   const showProblems = (heading, list) => {
-    problemsBox.innerHTML =
-      `<strong>${escapeHtml(heading)}</strong><ul>` +
-      list.map((p) => `<li>${escapeHtml(p)}</li>`).join('') +
-      '</ul>';
+    const items = buildElement('ul');
+    for (const p of list) items.append(buildElement('li', {}, p));
+    problemsBox.replaceChildren(buildElement('strong', {}, heading), items);
     problemsBox.hidden = false;
   };
   const clearProblems = () => {
     problemsBox.hidden = true;
-    problemsBox.innerHTML = '';
+    problemsBox.replaceChildren();
   };
 
-  const close = () => {
-    overlay.hidden = true;
+  // However it closes — Cancel, Escape, a click on the backdrop — it opens
+  // blank next time.
+  dialog.addEventListener('close', () => {
     clearProblems();
     form.reset();
-  };
+  });
 
   openBtns.forEach((btn) =>
     btn.addEventListener('click', () => {
       clearProblems();
-      overlay.hidden = false;
+      modal.open();
       textInput.focus();
     })
   );
-  cancelBtn.addEventListener('click', close);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
+  cancelBtn.addEventListener('click', () => modal.close());
 
   // Choosing a file fills the textarea, so what gets imported is always
   // exactly what the person can see.
@@ -1393,6 +1839,18 @@ function setupImportModal() {
       showProblems('Import failed.', [err.message]);
     }
   });
+
+  // /#import opens the dialog straight away: it is the installed app's
+  // "Import" shortcut (manifest.webmanifest), and a link anyone can share.
+  // Through the button, so focus goes back to it on close. The hash is
+  // dropped once used, so a reload or Back doesn't open it again.
+  const openFromHash = () => {
+    if (location.hash !== '#import') return;
+    history.replaceState(null, '', location.pathname + location.search);
+    openBtns[0].click();
+  };
+  window.addEventListener('hashchange', openFromHash);
+  openFromHash();
 }
 
 setupThemeToggle(); // every page carries the switch

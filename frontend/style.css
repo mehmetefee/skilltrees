@@ -73,6 +73,13 @@
   --locked: #7c8ba1;
   --unlocked: #2563eb;
   --selected: #b45309;
+  /* The "unlocks" highlight. Was #10b981, which is 2.5:1 on white — under
+     the 3:1 a graphical object needs (WCAG 1.4.11). */
+  --unlocks: #059669;
+
+  /* Keyboard focus, drawn as an SVG ring around skills and as the outline
+     everywhere else: 4.9:1 on the page background. */
+  --focus-ring: var(--accent);
 
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.08);
@@ -199,6 +206,92 @@ h1, h2, h3 {
   letter-spacing: -0.015em;
   font-weight: 650;
   color: var(--text);
+  /* Even lines rather than one long line and an orphan. */
+  text-wrap: balance;
+}
+
+/* No lone last word in running text. Browsers without it wrap as before. */
+p { text-wrap: pretty; }
+
+/* The homepage fills in after load (trees, then the hero), and a scrollbar
+   arriving part-way through would shove everything sideways. The graph pages
+   never scroll, so they don't reserve the gutter — it would be a blank strip
+   down the canvas. */
+html:has(.tree-grid) {
+  scrollbar-gutter: stable;
+  /* Keyboard focus scrolls things into view, and without this they can land
+     under the fixed top-right actions (WCAG 2.4.11). The anchors the page
+     jumps to itself keep their old landing spot — see #browse below. */
+  scroll-padding-top: 112px;
+}
+#browse { scroll-margin-top: -112px; }
+
+/* ---------------------------------------------------- page transitions */
+
+/* Cross-document view transitions: moving between pages cross-fades instead
+   of flashing white. Opt-in on both ends — every page shares this sheet —
+   and only for people who haven't asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-group(root) { animation-duration: 180ms; }
+}
+
+/* ------------------------------------------------------ accessibility */
+
+/* Read by screen readers, not drawn. clip-path rather than the deprecated
+   clip; the 1px box keeps it in the accessibility tree. */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* First thing Tab reaches on every page; off screen until then. Above the
+   fixed chrome (the header actions, the toast, the drop zone). */
+.skip-link {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1000;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  border: 2px solid var(--focus-ring);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  transform: translateY(calc(-100% - var(--space-5)));
+}
+.skip-link:focus,
+.skip-link:focus-visible { transform: none; text-decoration: none; }
+
+/* Where a skip link or a script puts focus to move the reading position —
+   a landmark, a heading. They aren't controls, so no ring (WCAG 2.4.7 is
+   about operable components); the content that follows shows the way. */
+main[tabindex="-1"]:focus,
+h1[tabindex="-1"]:focus,
+h2[tabindex="-1"]:focus { outline: none; }
+
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 4px;
+  margin: 0 1px;
+  font-family: inherit;
+  font-size: 0.92em;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -243,8 +336,11 @@ code {
 }
 
 /* The page title carries the weight here — big, tight, with a short accent
-   rule under it instead of a full-width divider. */
-.page-header h1 {
+   rule under it instead of a full-width divider. On the homepage it's an h2
+   (.page-title) under a visually hidden h1, so the featured tree's heading,
+   which comes first on screen, doesn't precede the page's own. */
+.page-header h1,
+.page-header .page-title {
   font-size: clamp(var(--text-2xl), 5vw, 44px);
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -254,7 +350,8 @@ code {
   padding-bottom: var(--space-3);
 }
 
-.page-header h1::after {
+.page-header h1::after,
+.page-header .page-title::after {
   content: '';
   position: absolute;
   left: 0;
@@ -284,7 +381,10 @@ code {
   font-size: var(--text-base);
   font-weight: 600;
   margin-bottom: var(--space-3);
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  min-height: 24px; /* WCAG 2.5.8: a standalone link, not one inside a sentence */
 }
 
 /* --------------------------------------------------------------- buttons */
@@ -440,8 +540,10 @@ code {
 .field input:focus,
 .field textarea:focus { outline: none; border-color: var(--accent); }
 .field textarea { resize: vertical; min-height: 72px; }
+/* Full strength: at the 0.7 it used to have, muted text drops to ~3.1:1, under
+   the 4.5:1 text needs. Firefox also dims placeholders by default. */
 .field input::placeholder,
-.field textarea::placeholder { color: var(--text-muted); opacity: 0.7; }
+.field textarea::placeholder { color: var(--text-muted); opacity: 1; }
 
 .choice {
   display: flex;
@@ -544,7 +646,9 @@ code {
 
 /* ---------------------------------------------------------------- search */
 
-.search-wrap { position: relative; margin-bottom: var(--space-5); }
+/* A <search> element: block here, since a browser that predates the element
+   treats it as an unknown inline one. */
+.search-wrap { display: block; position: relative; margin-bottom: var(--space-5); }
 
 .search-input {
   width: 100%;
@@ -564,7 +668,7 @@ code {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14), var(--shadow-sm);
 }
-.search-input::placeholder { color: var(--text-muted); }
+.search-input::placeholder { color: var(--text-muted); opacity: 1; }
 
 .search-dropdown {
   position: absolute;
@@ -592,6 +696,11 @@ code {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+.search-dropdown {
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
 }
 
 .search-item {
@@ -703,40 +812,36 @@ code {
 
 /* ---------------------------------------------------------------- modals */
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
+/* Every modal is a native <dialog> opened with showModal(), so it renders in
+   the top layer above everything (no z-index contest with the fixed chrome)
+   and the browser makes the rest of the page inert. A closed dialog is
+   display:none by the UA stylesheet — nothing is left on screen to swallow
+   clicks. The dimmed, blurred page behind is its ::backdrop. */
+dialog.modal {
+  background: #ffffff;
+  color: var(--text);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  width: calc(100% - 2 * var(--space-4));
+  max-width: 480px;
+  max-height: calc(100dvh - var(--space-7));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.18),
+              0 0 0 1px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--border);
+}
+dialog.modal[open] {
+  animation: modalScaleIn var(--dur-slow) var(--ease-bounce);
+}
+dialog.modal::backdrop {
   background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  padding: var(--space-4);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: fadeIn var(--dur) var(--ease);
 }
-.modal-overlay[hidden] {
-  display: none !important;
-}
-
-.modal {
-  position: relative;
-  background: #ffffff;
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
-  width: 100%;
-  max-width: 480px;
-  max-height: calc(100vh - var(--space-7));
-  overflow-y: auto;
-  box-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.18),
-              0 0 0 1px rgba(15, 23, 42, 0.06);
-  border: 1px solid var(--border);
-  animation: modalScaleIn var(--dur-slow) var(--ease-bounce);
-}
-.modal[hidden] {
-  display: none !important;
-}
+/* The page behind a modal stays put rather than scrolling under it. */
+html:has(dialog[open]) { overflow: hidden; }
 
 .modal h2 {
   margin: 0 0 var(--space-2);
@@ -894,6 +999,7 @@ code {
   color: var(--text-muted);
   cursor: pointer;
   line-height: 1.2;
+  min-height: 24px; /* WCAG 2.5.8 target size; the text alone is ~15px tall */
   transition: color var(--dur-fast) var(--ease);
 }
 .user-signout-btn:hover {
@@ -1122,6 +1228,56 @@ code {
 .tree-fullscreen-wrap #viewer-svg.panning { cursor: grabbing; }
 .tree-fullscreen-wrap #graph-svg.linking { cursor: crosshair; }
 
+/* The canvas is a tab stop (arrows pan it). It fills the window, so a ring
+   drawn outside it would be off screen — this one is drawn inside the edge. */
+#graph-svg:focus-visible,
+#viewer-svg:focus-visible,
+#featured-svg:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: -3px;
+  border-radius: 0;
+}
+
+/* Skills draw their own ring in SVG (.node-focus-ring), so no outline. */
+g[data-skill-id]:focus { outline: none; }
+
+/* Keyboard help, shown only while the graph has keyboard focus: out of the
+   way for everyone else, there the moment it's useful. Which line shows
+   depends on whether the canvas or a skill has focus, since the arrow keys
+   mean different things on each. The same help is given to screen readers
+   through the canvas's aria-describedby. */
+.graph-kbd-hint {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  z-index: 12;
+  max-width: calc(100% - 2 * var(--space-5));
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  text-align: center;
+  pointer-events: none;
+}
+/* In the editor and viewer the bottom-left belongs to the legend and the
+   bottom middle to the toast, so the help takes the free corner. */
+.tree-fullscreen-wrap .graph-kbd-hint {
+  left: auto;
+  right: var(--space-5);
+  transform: none;
+  max-width: min(560px, calc(100% - 2 * var(--space-5)));
+}
+.graph-kbd-hint > span { display: none; }
+:is(.tree-fullscreen-wrap, .featured-hero):has(svg:focus-visible) .graph-kbd-hint,
+:is(.tree-fullscreen-wrap, .featured-hero):has(g[data-skill-id]:focus-visible) .graph-kbd-hint { display: block; }
+:is(.tree-fullscreen-wrap, .featured-hero):has(svg:focus-visible) .graph-kbd-hint .kbd-canvas,
+:is(.tree-fullscreen-wrap, .featured-hero):has(g[data-skill-id]:focus-visible) .graph-kbd-hint .kbd-node { display: inline; }
+
 .tree-overlay-topleft {
   position: absolute;
   top: var(--space-5);
@@ -1137,7 +1293,6 @@ code {
 .tree-overlay-topleft > * { pointer-events: auto; }
 
 .tree-overlay-topleft .back-link {
-  display: inline-block;
   font-size: var(--text-sm);
   font-weight: 600;
   margin-bottom: var(--space-2);
@@ -1244,6 +1399,7 @@ code {
 .inline-author {
   display: inline-block;
   width: auto;
+  min-height: 24px; /* WCAG 2.5.8 target size */
   font-size: var(--text-sm);
   color: var(--text-muted);
   padding: 1px 5px;
@@ -1262,12 +1418,25 @@ code {
   background: var(--surface);
   text-shadow: none;
 }
+/* A 1px border alone is a thin focus indicator; keyboard focus gets the
+   site's ring as well. */
+.inline-title:focus-visible,
+.inline-desc:focus-visible,
+.inline-author:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
 
+/* Full strength for contrast (4.5:1); the lighter weight of a placeholder
+   comes from the muted colour, not from fading it out. */
 .inline-title::placeholder,
 .inline-desc::placeholder,
-.inline-author::placeholder { color: var(--text-muted); opacity: 0.7; }
+.inline-author::placeholder { color: var(--text-muted); opacity: 1; }
 
-/* A tree you don't own reads as plain text: no hover, no focus ring. */
+/* A tree you don't own reads as plain text: no hover, and no field-like box
+   on focus. Keyboard focus still gets the ring above — the fields stay in the
+   tab order so they can be read and copied, and a tab stop you can't see is a
+   WCAG 2.4.7 failure. */
 .inline-title.readonly,
 .inline-desc.readonly,
 .inline-author.readonly { cursor: default; }
@@ -1408,6 +1577,18 @@ code {
   filter: drop-shadow(0 0 10px rgba(180, 83, 9, 0.45));
 }
 
+/* Keyboard focus on a skill: a ring a few pixels outside the card, so it
+   never competes with the card's own border (which already means locked,
+   start-here or selected). Present on every node, drawn only on focus. */
+.node-focus-ring {
+  fill: none;
+  stroke: var(--focus-ring);
+  stroke-width: 3px;
+  opacity: 0;
+  pointer-events: none;
+}
+g[data-skill-id]:focus-visible .node-focus-ring { opacity: 1; }
+
 .node-label {
   fill: var(--text);
   font-size: 13px;
@@ -1438,14 +1619,19 @@ code {
   cursor: pointer;
 }
 
-/* Pathway illumination */
+/* Pathway illumination. The skills off the path fade back, but their names
+   stay readable: at the 0.25 they used to fade to, labels fell to 1.7:1.
+   Both lines take the body colour at 0.6, which is 4.6:1 on the faded card —
+   still clearly behind the highlighted path, still above the 4.5:1 minimum. */
 .graph-has-highlight .node-card {
   opacity: 0.25;
 }
 .graph-has-highlight .node-label,
 .graph-has-highlight .node-sublabel {
-  opacity: 0.25;
+  opacity: 0.6;
 }
+.graph-has-highlight .node-sublabel { fill: var(--text); }
+.graph-has-highlight g.highlight-node .node-sublabel { fill: var(--text-muted); }
 .graph-has-highlight .edge-line:not(.hit) {
   opacity: 0.12;
 }
@@ -1464,7 +1650,7 @@ code {
 }
 .graph-has-highlight .node-card.highlight-downstream {
   opacity: 1;
-  stroke: #10b981;
+  stroke: var(--unlocks);
   stroke-width: 2.5px;
   filter: drop-shadow(0 2px 8px rgba(16, 185, 129, 0.4));
 }
@@ -1489,7 +1675,7 @@ code {
 }
 .graph-has-highlight .edge-line.path-downstream {
   opacity: 1;
-  stroke: #10b981;
+  stroke: var(--unlocks);
   stroke-width: 2.5px;
   stroke-dasharray: 6 3;
   animation: flowDash 0.8s linear infinite;
@@ -1542,17 +1728,29 @@ code {
   box-shadow: var(--shadow-lg);
   padding: var(--space-6);
   overflow-y: auto;
+  scrollbar-gutter: stable; /* a long list arriving mustn't shift the text */
   transform: translateX(100%);
-  transition: transform var(--dur-slow) cubic-bezier(0.16, 1, 0.3, 1);
+  /* Closed, it's slid off screen *and* hidden: off screen alone, its buttons
+     stayed in the tab order and Tab would land on things nobody could see.
+     visibility waits for the slide to finish before it hides. */
+  visibility: hidden;
+  transition: transform var(--dur-slow) cubic-bezier(0.16, 1, 0.3, 1),
+              visibility 0s linear var(--dur-slow);
   z-index: 50;
 }
-.side-panel.open { transform: translateX(0); }
+.side-panel.open {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform var(--dur-slow) cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
+}
 .side-panel h2 { margin: 0 var(--space-6) var(--space-2) 0; font-size: var(--text-lg); color: var(--text); }
 
 .side-panel .close-btn {
   position: absolute;
   top: var(--space-4);
   right: var(--space-4);
+  min-width: 32px;
+  min-height: 32px;
   background: none;
   border: none;
   font-size: var(--text-lg);
@@ -1619,6 +1817,46 @@ code {
 }
 .prereq-list li:last-child,
 .unlock-list li:last-child { border-bottom: none; }
+.panel-empty { color: var(--text-muted); }
+
+/* Each linked skill is a real button (it used to be a clickable <li>, which
+   no keyboard could reach), filling the row so the whole row still clicks. */
+.prereq-list li.interactive,
+.unlock-list li.interactive { padding: 0; gap: var(--space-1); }
+.panel-jump {
+  flex: 1;
+  min-height: 36px;
+  padding: var(--space-2);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.panel-jump:disabled { cursor: default; }
+.panel-unlink {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.panel-unlink:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--surface);
+}
 
 /* Drag and drop overlay */
 .drop-zone-overlay {
@@ -1652,6 +1890,13 @@ code {
   box-shadow: 0 8px 32px rgba(37, 99, 235, 0.15);
   animation: modalScaleIn 0.3s var(--ease-bounce);
 }
+.drop-zone-icon { font-size: 36px; margin-bottom: 12px; }
+.drop-zone-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: normal;
+  margin-top: 6px;
+}
 
 /* ----------------------------------------------------------------- toast */
 
@@ -1674,6 +1919,9 @@ code {
   transition: opacity var(--dur) var(--ease), transform var(--dur-slow) var(--ease-bounce);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+/* showToast() moves it here when the bottom spot would cover whatever has
+   keyboard focus (WCAG 2.4.11). */
+.toast.toast-top { bottom: auto; top: var(--space-5); }
 
 /* ------------------------------------------------------------ responsive */
 
@@ -1750,6 +1998,10 @@ code {
   .tree-overlay-topright { top: auto; bottom: var(--space-3); right: var(--space-3); left: var(--space-3); justify-content: flex-start; }
   /* The hint now flows inside the top-left column, so it can no longer
      collide with anything and stays visible on a phone. */
+
+  /* The toolbar has taken the bottom edge (and the hero's corners are
+     taken too), so the keyboard help sits above them. */
+  .graph-kbd-hint { bottom: calc(var(--space-3) + 96px); }
 }
 
 /* Honour a reduced-motion preference: keep every end state, drop the travel. */
@@ -1760,5 +2012,387 @@ code {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+  ::backdrop { animation: none !important; }
   .tree-card:hover { transform: none; }
+}
+
+/* ------------------------------------------- account page: providers + panel
+ *
+ * Sign-in through another provider, and the signed-in "Your account" view on
+ * account.html. Built from the existing tokens and .btn/.auth-card; this
+ * block only adds what those don't cover. Each .account-section is a panel
+ * of its own, so later ones (passkeys, password and sessions) need no new
+ * rules to sit in line with these.
+ */
+
+/* display:flex below would otherwise beat the hidden attribute. */
+.oauth-providers[hidden],
+.auth-divider[hidden],
+.account-view[hidden] { display: none; }
+
+.oauth-providers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A full-width bordered button: the one place a sign-in action is a block,
+   because it sits in a column of equals rather than beside a form. */
+.btn-provider {
+  width: 100%;
+  padding: 11px 14px;
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+.btn-provider:hover { border-color: var(--text); }
+
+/* "—— or ——" between the providers and the password form. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.account-notice { max-width: 440px; }
+
+.account-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 560px;
+}
+
+.account-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+.account-section h2 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+.account-section-intro {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.account-overview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.account-overview-text { flex: 1; min-width: 0; }
+.account-overview .account-section-intro { margin-bottom: 0; }
+.account-username {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-avatar {
+  width: 44px;
+  height: 44px;
+  font-size: var(--text-lg);
+}
+
+.sign-in-methods {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sign-in-method {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.sign-in-method:first-child { border-top: none; padding-top: 0; }
+.sign-in-method:last-child { padding-bottom: 0; }
+.sign-in-method-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sign-in-method-name { font-weight: 600; }
+.sign-in-method-detail {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.sign-in-methods + .import-problems { margin: var(--space-4) 0 0; }
+
+/* The name in the header chip leads to the account page. */
+a.auth-name { text-decoration: none; }
+a.auth-name:hover { color: var(--accent); text-decoration: underline; }
+
+@media (max-width: 520px) {
+  .account-overview { flex-wrap: wrap; }
+  .account-overview #account-sign-out { width: 100%; }
+}
+
+/* --------------------------------------------------------- forced colours */
+
+/* Windows High Contrast and other forced-colour modes replace the palette
+   with a handful of system colours. The browser handles text, borders and
+   outlines itself; what it can't know is which SVG strokes carry meaning, or
+   which "backgrounds" were the only sign of a state. So:
+     - skills, links and arrowheads draw in CanvasText on Canvas;
+     - start-here vs has-prerequisites, which was colour alone, becomes solid
+       vs dashed (the legend follows suit);
+     - selection and the highlighted path use Highlight, keyboard focus a
+       thick Highlight ring;
+     - states that were only a background tint (the chosen export option,
+       the highlighted search result) get a real system-colour treatment.
+   Inline styles from highlightGraphPath() are why some of these need
+   !important. */
+@media (forced-colors: active) {
+  .node-card,
+  .node-card.unlocked,
+  .node-card.locked {
+    fill: Canvas !important;
+    stroke: CanvasText !important;
+    filter: none !important;
+  }
+  .node-card.locked { stroke-dasharray: 6 4; }
+  .node-card.unlocked { stroke-width: 3px; }
+  .node-card.selected,
+  .graph-has-highlight .node-card.highlight-focus {
+    stroke: Highlight !important;
+    stroke-width: 4px;
+    stroke-dasharray: none;
+  }
+  .graph-has-highlight .node-card.highlight-upstream,
+  .graph-has-highlight .node-card.highlight-downstream { stroke: Highlight !important; }
+  .node-label,
+  .node-sublabel { fill: CanvasText !important; }
+  .edge-line:not(.hit),
+  .link-wire-preview { stroke: CanvasText !important; filter: none; }
+  .graph-has-highlight .edge-line.path-upstream,
+  .graph-has-highlight .edge-line.path-downstream { stroke: Highlight !important; }
+  marker polygon { fill: CanvasText !important; }
+  .node-focus-ring { stroke: Highlight; stroke-width: 4px; }
+
+  .swatch.locked { border-style: dashed; border-color: CanvasText; }
+  .swatch.unlocked { border-width: 3px; border-color: CanvasText; }
+
+  /* Custom radios lose their dot (a background) — use the system's own. */
+  .choice input[type="radio"] { appearance: auto; -webkit-appearance: auto; }
+  .choice input[type="radio"]::before { display: none; }
+  .choice:has(input:checked) { outline: 2px solid Highlight; }
+
+  .search-item.active {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+  .search-item.active .search-item-title,
+  .search-item.active .search-item-meta { color: HighlightText; }
+
+  #link-mode-btn.linking-active { outline: 2px solid Highlight; outline-offset: 2px; }
+  .skip-link { border-color: CanvasText; }
+  :focus-visible { outline-color: Highlight; }
+}
+
+/* ------------------------------------------------ account page: passkeys
+ *
+ * The passkey button on the sign-in card, the passkey option inside the
+ * sign-up form, and the "Passkeys" section of "Your account". The buttons
+ * are .btn-provider (a full-width block, like "Continue with ..."), and the
+ * list reuses .sign-in-methods, so this block only adds spacing, the rename
+ * form and the row actions.
+ */
+
+.passkey-sign-in[hidden],
+.passkey-sign-up[hidden],
+.passkey-empty[hidden],
+.passkey-list[hidden] { display: none; }
+
+/* Above the provider buttons, when there are any: the first way in offered. */
+.passkey-sign-in + .oauth-providers:not([hidden]) { margin-top: var(--space-2); }
+
+/* Inside the form, between the username and the password: the passkey for
+   the name just typed, then "or choose a password". */
+.passkey-sign-up { margin: 0 0 var(--space-4); }
+.passkey-sign-up .auth-divider { margin: var(--space-4) 0 0; }
+.passkey-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.passkey-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.passkey-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.passkey-list + .passkey-empty + .import-problems,
+#account-passkeys .import-problems { margin: var(--space-4) 0 0; }
+
+.passkey-row-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Renaming happens in the row: the name becomes a field. */
+.passkey-rename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+.passkey-rename input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-base);
+}
+.passkey-rename input:focus { border-color: var(--accent); }
+
+@media (max-width: 520px) {
+  .passkey-item { flex-wrap: wrap; }
+  .passkey-row-actions { width: 100%; }
+}
+
+/* ------------------------ account page: password, sessions, data, deletion
+ *
+ * The sections of account.html from #account-password down, driven by
+ * account-settings.js. Built on .account-section, .field, .btn,
+ * .import-problems and dialog.modal; this block only adds what those don't
+ * cover. The danger section is marked by its border and heading colour and
+ * by its wording, never by colour alone.
+ */
+
+.field-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.check-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.check-field input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* A polite live region that stays in the page when empty (display:none
+   would take it out of the accessibility tree, and a region that appears
+   together with its text is often not read at all); it only loses its
+   margin. */
+.account-status {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.account-status:empty { margin: 0; }
+
+/* The session list: rows like the sign-in methods above it. */
+.session-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+.session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.session:first-child { border-top: none; padding-top: 0; }
+.session-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.session-name { font-weight: 600; }
+.session-detail {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.session-badge {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.account-danger { border-color: rgba(194, 65, 12, 0.35); }
+.account-danger > h2 { color: var(--danger); }
+
+/* The confirmation lives inside its section (a section owns everything in
+   it), so it takes back the modal heading that .account-section h2 would
+   otherwise shrink. */
+.account-section dialog.modal h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* The one filled button on the page: the irreversible one, inside the
+   confirmation. White on --danger is 5.2:1. */
+.btn-danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+.btn-danger-solid:hover {
+  background: #9a3412;
+  border-color: #9a3412;
+  color: #ffffff;
+}
+.account-dialog strong { overflow-wrap: anywhere; }
+
+@media (max-width: 520px) {
+  .session { flex-wrap: wrap; }
+}
+
+@media (forced-colors: active) {
+  .session-badge { border: 1px solid CanvasText; }
+  .btn-danger-solid { forced-color-adjust: auto; border: 2px solid ButtonText; }
 }
