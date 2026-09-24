@@ -54,7 +54,7 @@
          Each <section class="account-section"> is one self-contained panel with
          its own heading, and owns everything inside it. New panels go in as
          further sections inside #account-view, in the order they should
-         appear — the two marked below are where they are expected. -->
+         appear — the passkeys one is expected where marked below. -->
     <div id="account-view" class="account-view" hidden>
       <section class="account-section" id="account-overview" aria-labelledby="account-username">
         <div class="account-overview">
@@ -76,12 +76,115 @@
 
       <!-- Passkeys: a section of its own goes here. -->
 
-      <!-- Change password, sessions and deleting the account: a section of its own goes here. -->
+      <!-- The password, where you're signed in, your data, and deleting the
+           account: account-settings.js fills and drives these four. Every
+           message in them is written with textContent. The ids are linked
+           to: /account.html#account-password is where a password manager's
+           "change password" lands. -->
+      <section class="account-section" id="account-password" aria-labelledby="account-password-heading">
+        <h2 id="account-password-heading" tabindex="-1">Password</h2>
+        <p class="account-section-intro" id="account-password-intro">
+          Change the password you sign in with. Every other browser signed in to this account will be signed out.
+        </p>
+        <form id="password-form" class="account-form">
+          <!-- Tells a password manager which account the new password is for. -->
+          <input type="text" id="password-form-username" autocomplete="username" readonly hidden />
+          <div class="field" id="current-password-field">
+            <label for="current-password">Current password</label>
+            <input id="current-password" type="password" autocomplete="current-password" required
+              maxlength="4096" aria-describedby="password-error" />
+          </div>
+          <div class="field">
+            <label for="new-password">New password</label>
+            <input id="new-password" type="password" autocomplete="new-password" required minlength="8"
+              maxlength="4096" aria-describedby="new-password-rules password-error" />
+            <p class="field-hint" id="new-password-rules">
+              At least 8 characters; a long passphrase is best, and no symbols or numbers are required.
+              Very common passwords, and ones containing your username, are refused.
+            </p>
+          </div>
+          <label class="check-field"><input type="checkbox" id="show-passwords" /> Show passwords</label>
+          <div id="password-error" class="import-problems" role="alert" hidden></div>
+          <div class="account-actions">
+            <button type="submit" class="btn" id="password-submit">Change password</button>
+            <button type="button" class="btn" id="password-reauth" hidden>Sign in again</button>
+          </div>
+          <p class="account-status" id="password-status" role="status"></p>
+        </form>
+      </section>
+
+      <section class="account-section" id="account-sessions" aria-labelledby="account-sessions-heading">
+        <h2 id="account-sessions-heading" tabindex="-1">Where you&rsquo;re signed in</h2>
+        <p class="account-section-intro">
+          Every browser signed in to this account. If you don&rsquo;t recognise one, end it, then change your password.
+        </p>
+        <ul class="session-list" id="session-list" aria-labelledby="account-sessions-heading"></ul>
+        <div id="sessions-error" class="import-problems" role="alert" hidden></div>
+        <div class="account-actions">
+          <button type="button" class="btn btn-small" id="sessions-revoke-others" hidden>Sign out everywhere else</button>
+          <button type="button" class="btn btn-small" id="sessions-reauth" hidden>Sign in again</button>
+        </div>
+        <p class="account-status" id="sessions-status" role="status"></p>
+      </section>
+
+      <section class="account-section" id="account-data" aria-labelledby="account-data-heading">
+        <h2 id="account-data-heading" tabindex="-1">Your data</h2>
+        <p class="account-section-intro">
+          Everything this site holds about your account &mdash; your trees, the sign-ins connected to it and
+          where it is signed in &mdash; as one JSON file. Each tree in it can be imported again.
+        </p>
+        <div id="data-error" class="import-problems" role="alert" hidden></div>
+        <div class="account-actions">
+          <button type="button" class="btn" id="data-download">Download my data</button>
+        </div>
+        <p class="account-status" id="data-status" role="status"></p>
+      </section>
+
+      <section class="account-section account-danger" id="account-danger" aria-labelledby="account-danger-heading">
+        <h2 id="account-danger-heading" tabindex="-1">Delete account</h2>
+        <p class="account-section-intro" id="delete-summary">
+          Deleting your account also deletes every tree it made, for everyone, straight away. It can&rsquo;t be undone.
+        </p>
+        <p class="account-section-intro">
+          Want to keep your trees? <a href="#account-data">Download your data</a> first: each tree in it can be
+          imported again, here or anywhere that reads the format.
+        </p>
+        <div class="account-actions">
+          <button type="button" class="btn btn-danger" id="delete-open">Delete account&hellip;</button>
+        </div>
+
+        <dialog class="modal account-dialog" id="delete-dialog" aria-labelledby="delete-title"
+          aria-describedby="delete-help" closedby="any">
+          <h2 id="delete-title">Delete your account?</h2>
+          <p class="modal-subtitle" id="delete-help"></p>
+          <form id="delete-form">
+            <div class="field">
+              <label for="delete-confirm-username">Type your username, <strong id="delete-username"></strong>, to confirm</label>
+              <input id="delete-confirm-username" type="text" required maxlength="40" autocomplete="off"
+                autocapitalize="off" spellcheck="false" aria-describedby="delete-error" />
+            </div>
+            <div class="field" id="delete-password-field">
+              <label for="delete-password">Your password</label>
+              <input id="delete-password" type="password" required maxlength="4096"
+                autocomplete="current-password" aria-describedby="delete-error" />
+            </div>
+            <div id="delete-error" class="import-problems" role="alert" hidden></div>
+            <div class="modal-actions">
+              <button type="button" class="btn" id="delete-cancel">Cancel</button>
+              <button type="button" class="btn" id="delete-reauth" hidden>Sign in again</button>
+              <button type="submit" class="btn btn-danger btn-danger-solid" id="delete-submit">Delete account and trees</button>
+            </div>
+          </form>
+        </dialog>
+      </section>
     </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <!-- a11y.js for setupModalDialog(), which the delete confirmation uses. -->
+  <script src="/a11y.js"></script>
   <script src="/app.js"></script>
+  <script src="/account-settings.js"></script>
 </body>
 </html>

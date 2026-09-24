@@ -2,8 +2,9 @@
 // editor, the viewer and the homepage's featured hero): modal dialogs, a
 // polite announcer for screen readers, and the keyboard model for the graph.
 //
-// Loaded before app.js on those pages. account.html doesn't load it, so
-// nothing in app.js may call into this file from code that runs everywhere.
+// Loaded before app.js on those pages, and on account.html for its delete
+// confirmation dialog. Other pages may not load it, so nothing in app.js may
+// call into this file from code that runs everywhere.
 
 // ---------- typing guard ----------
 
