@@ -37,10 +37,13 @@ function showToast(msg) {
   showToast._t = setTimeout(() => toast.classList.remove('show'), Math.max(3000, msg.length * 70));
 }
 
-async function apiFetch(path, opts) {
+async function apiFetch(path, opts = {}) {
+  // Headers are merged, not replaced: a caller that passes a header of its
+  // own must not silently lose the Content-Type, which the server insists on
+  // for any request with a body (415 otherwise).
   const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
     ...opts,
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
   let data = null;
   try { data = await res.json(); } catch (e) { /* no body */ }
