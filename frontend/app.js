@@ -67,7 +67,7 @@ function renderAuthSlots() {
     slot.innerHTML = signedInUser
       ? `<div class="user-chip" title="Signed in as ${escapeHtml(signedInUser.username)}" aria-label="Signed in as ${escapeHtml(signedInUser.username)}">` +
         `<span class="user-avatar" aria-hidden="true">${escapeHtml(signedInUser.username.charAt(0).toUpperCase())}</span>` +
-        `<span class="auth-name">${escapeHtml(signedInUser.username)}</span>` +
+        `<a class="auth-name" href="/account.html" title="Your account">${escapeHtml(signedInUser.username)}</a>` +
         `<button type="button" class="user-signout-btn" data-sign-out title="Sign out" aria-label="Sign out of ${escapeHtml(signedInUser.username)}">Sign out</button>` +
         `</div>`
       : `<a href="/account.html?next=${next}" class="btn btn-signin">Sign in</a>`;
@@ -110,7 +110,69 @@ function sameSitePath(next) {
   return url.pathname + url.search + url.hash;
 }
 
-function setupAccountPage() {
+// Why a sign-in through another provider came back without finishing. The
+// server only ever sends one of these codes — never the provider's own words
+// — and anything unrecognised gets the general line rather than being shown.
+const OAUTH_ERROR_MESSAGES = {
+  cancelled: 'Sign-in was cancelled at the provider, so nothing changed.',
+  expired:
+    'That sign-in expired, was already used, or was started in a different browser. Please start again from this page.',
+  failed: 'That sign-in could not be completed. Please try again.',
+  unavailable: 'That sign-in provider is not available right now. Please try again later.',
+  identity_taken:
+    'That account is already connected to a different Skill Trees account. Sign in to that one to disconnect it first.',
+  link_session: 'You were signed out before the connection finished. Sign in and try connecting again.',
+};
+
+async function loadProviders() {
+  try {
+    const list = await apiFetch('/auth/providers');
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Sends the browser to a provider. The start is a same-origin POST (the
+// server's Origin check guards it) and the page navigates to the URL it gets
+// back — a form posting here would be stopped by CSP form-action 'self' the
+// moment the answer redirected to another site.
+async function startOAuth(providerId, intent, next) {
+  const data = await apiFetch(`/auth/oauth/${encodeURIComponent(providerId)}/start`, {
+    method: 'POST',
+    body: JSON.stringify({ intent, next }),
+  });
+  // This string is about to become a navigation, so it must be a web URL.
+  const url = new URL(data.authorization_url);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('The sign-in provider sent an address this page will not open.');
+  }
+  window.location.assign(url.href);
+}
+
+function showNotice(box, message) {
+  box.textContent = '';
+  const strong = document.createElement('strong');
+  strong.textContent = message;
+  box.appendChild(strong);
+  box.hidden = false;
+}
+
+// Reads ?oauth_error= (and ?connected=) once, then takes them out of the
+// address bar so a reload doesn't show the message again. Keeps ?next=.
+function takeOAuthOutcome() {
+  const params = new URLSearchParams(location.search);
+  const error = params.get('oauth_error');
+  const connected = params.get('connected');
+  if (error === null && connected === null) return { error: null, connected: null };
+  params.delete('oauth_error');
+  params.delete('connected');
+  const rest = params.toString();
+  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  return { error, connected };
+}
+
+async function setupAccountPage() {
   const form = document.getElementById('auth-form');
   if (!form) return;
 
@@ -121,13 +183,11 @@ function setupAccountPage() {
   const errorBox = document.getElementById('auth-error');
   const username = document.getElementById('auth-username');
   const password = document.getElementById('auth-password');
+  const oauthError = document.getElementById('oauth-error');
 
   let mode = 'login';
 
-  const showError = (message) => {
-    errorBox.innerHTML = `<strong>${escapeHtml(message)}</strong>`;
-    errorBox.hidden = false;
-  };
+  const showError = (message) => showNotice(errorBox, message);
 
   const applyMode = () => {
     const signup = mode === 'signup';
@@ -176,6 +236,162 @@ function setupAccountPage() {
   });
 
   applyMode();
+
+  const outcome = takeOAuthOutcome();
+  if (outcome.error !== null) {
+    showNotice(oauthError, OAUTH_ERROR_MESSAGES[outcome.error] || OAUTH_ERROR_MESSAGES.failed);
+  }
+
+  const [user, providers] = await Promise.all([loadSignedInUser(), loadProviders()]);
+  if (user) {
+    showAccountView(user, providers, outcome.connected);
+  } else {
+    showSignInView(providers);
+  }
+}
+
+// Signed out: "Continue with <provider>" for each configured one, above the
+// password form. With none configured the page is just the form, as before.
+function showSignInView(providers) {
+  const view = document.getElementById('sign-in-view');
+  const list = document.getElementById('oauth-providers');
+  const divider = document.getElementById('oauth-divider');
+  const oauthError = document.getElementById('oauth-error');
+
+  list.textContent = '';
+  for (const provider of providers) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-provider';
+    button.dataset.provider = provider.id;
+    button.textContent = `Continue with ${provider.name}`;
+    button.addEventListener('click', async () => {
+      for (const b of list.querySelectorAll('button')) b.disabled = true;
+      oauthError.hidden = true;
+      try {
+        // The server checks next again; this is the same rule as the form's.
+        const next = new URLSearchParams(location.search).get('next') || '';
+        await startOAuth(provider.id, 'login', sameSitePath(next));
+      } catch (err) {
+        showNotice(oauthError, err.message);
+        for (const b of list.querySelectorAll('button')) b.disabled = false;
+      }
+    });
+    list.appendChild(button);
+  }
+  list.hidden = divider.hidden = providers.length === 0;
+  view.hidden = false;
+}
+
+// Signed in: the "Your account" panel.
+function showAccountView(user, providers, connected) {
+  const heading = document.getElementById('auth-heading');
+  heading.textContent = 'Your account';
+  document.title = 'Your account — Skill Trees';
+  document.getElementById('account-username').textContent = user.username;
+  document.getElementById('account-avatar').textContent = user.username.charAt(0).toUpperCase();
+
+  const signOut = document.getElementById('account-sign-out');
+  signOut.addEventListener('click', async () => {
+    signOut.disabled = true;
+    try {
+      await apiFetch('/auth/logout', { method: 'POST' });
+    } catch (e) {
+      /* signing out locally either way */
+    }
+    window.location.href = '/account.html';
+  });
+
+  document.getElementById('account-view').hidden = false;
+
+  if (connected) {
+    const provider = providers.find((p) => p.id === connected);
+    if (provider) showToast(`Connected ${provider.name}.`);
+  }
+  renderSignInMethods(user, providers);
+}
+
+// "Sign-in methods": the password, each connected provider with Disconnect,
+// and a Connect for every configured provider not connected yet. The server
+// refuses to remove the last way in; the page only mirrors that so the
+// button doesn't invite a click that will be refused.
+async function renderSignInMethods(user, providers) {
+  const list = document.getElementById('sign-in-methods-list');
+  const errorBox = document.getElementById('sign-in-methods-error');
+
+  let identities = [];
+  try {
+    identities = await apiFetch('/auth/identities');
+  } catch (err) {
+    showNotice(errorBox, err.message);
+    return;
+  }
+
+  const usable = (user.has_password ? 1 : 0) + identities.filter((i) => i.enabled).length;
+
+  const row = (name, detail, action) => {
+    const li = document.createElement('li');
+    li.className = 'sign-in-method';
+    const text = document.createElement('div');
+    text.className = 'sign-in-method-text';
+    const title = document.createElement('span');
+    title.className = 'sign-in-method-name';
+    title.textContent = name;
+    const sub = document.createElement('span');
+    sub.className = 'sign-in-method-detail';
+    sub.textContent = detail;
+    text.append(title, sub);
+    li.appendChild(text);
+    if (action) li.appendChild(action);
+    list.appendChild(li);
+  };
+
+  const button = (label, className, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = className;
+    b.textContent = label;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      errorBox.hidden = true;
+      try {
+        await onClick();
+      } catch (err) {
+        showNotice(errorBox, err.message);
+        b.disabled = false;
+      }
+    });
+    return b;
+  };
+
+  list.textContent = '';
+
+  row('Password', user.has_password ? 'Set' : 'Not set — you sign in through a provider below', null);
+
+  for (const identity of identities) {
+    const detail = [identity.display_name, `connected ${timeAgo(identity.created_at)}`];
+    if (!identity.enabled) detail.push('this provider is switched off here');
+    const last = identity.enabled && usable <= 1;
+    const disconnect = button('Disconnect', 'btn btn-small btn-danger', async () => {
+      await apiFetch(`/auth/identities/${encodeURIComponent(identity.id)}`, { method: 'DELETE' });
+      showToast(`Disconnected ${identity.provider_name}.`);
+      renderSignInMethods(user, providers);
+    });
+    if (last) {
+      disconnect.disabled = true;
+      disconnect.title = 'This is your only way to sign in. Connect another first.';
+    }
+    row(identity.provider_name, detail.filter(Boolean).join(' · '), disconnect);
+  }
+
+  const connectedIds = new Set(identities.map((i) => i.provider));
+  for (const provider of providers) {
+    if (connectedIds.has(provider.id)) continue;
+    const connect = button('Connect', 'btn btn-small', () =>
+      startOAuth(provider.id, 'link', `/account.html?connected=${encodeURIComponent(provider.id)}`)
+    );
+    row(provider.name, 'Not connected', connect);
+  }
 }
 
 function escapeHtml(str) {

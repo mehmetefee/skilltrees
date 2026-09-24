@@ -19,7 +19,18 @@
       </div>
     </div>
 
-    <div class="auth-card">
+    <!-- Why a sign-in through another provider didn't finish (?oauth_error=).
+         Filled from a fixed list with textContent: nothing the provider or the
+         URL says is ever rendered as markup. -->
+    <div id="oauth-error" class="import-problems account-notice" role="alert" hidden></div>
+
+    <!-- Signed out: a button per configured provider, then the password form.
+         Both views start hidden; app.js shows the right one once it knows
+         whether anyone is signed in, so neither flashes up for the wrong person. -->
+    <div class="auth-card" id="sign-in-view" hidden>
+      <div id="oauth-providers" class="oauth-providers" hidden></div>
+      <div id="oauth-divider" class="auth-divider" hidden><span>or</span></div>
+
       <form id="auth-form">
         <div class="field">
           <label for="auth-username">Username</label>
@@ -37,6 +48,35 @@
           <button type="button" class="btn" id="auth-toggle">Create an account instead</button>
         </div>
       </form>
+    </div>
+
+    <!-- Signed in: "Your account".
+         Each <section class="account-section"> is one self-contained panel with
+         its own heading, and owns everything inside it. New panels go in as
+         further sections inside #account-view, in the order they should
+         appear — the two marked below are where they are expected. -->
+    <div id="account-view" class="account-view" hidden>
+      <section class="account-section" id="account-overview" aria-labelledby="account-username">
+        <div class="account-overview">
+          <span class="user-avatar account-avatar" id="account-avatar" aria-hidden="true"></span>
+          <div class="account-overview-text">
+            <h2 id="account-username" class="account-username"></h2>
+            <p class="account-section-intro">Only this account can change the trees it made.</p>
+          </div>
+          <button type="button" class="btn" id="account-sign-out">Sign out</button>
+        </div>
+      </section>
+
+      <section class="account-section" id="account-sign-in-methods" aria-labelledby="sign-in-methods-heading">
+        <h2 id="sign-in-methods-heading">Sign-in methods</h2>
+        <p class="account-section-intro">The ways you can get back into this account. Keep at least one.</p>
+        <ul class="sign-in-methods" id="sign-in-methods-list"></ul>
+        <div id="sign-in-methods-error" class="import-problems" role="alert" hidden></div>
+      </section>
+
+      <!-- Passkeys: a section of its own goes here. -->
+
+      <!-- Change password, sessions and deleting the account: a section of its own goes here. -->
     </div>
   </div>
 
