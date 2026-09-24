@@ -493,8 +493,9 @@ const { check, skip, finish } = createReporter();
     await t.goto(`${BASE}/tree.html?id=987654`);
     check('offline, an unvisited page gets offline.html, scripts and policy from the cache',
       (await t.locator('h1').first().textContent()) === "You're offline");
-    await traveller.context.setOffline(false);
-    traveller.watch.allow = null;
+    // Closed while still offline: the manifest icon the browser fetches for
+    // itself can report its failure late, and it belongs to this phase.
+    await traveller.context.close();
 
     // ================= the enforcement itself
 

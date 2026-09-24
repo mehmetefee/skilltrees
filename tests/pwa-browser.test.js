@@ -214,6 +214,10 @@ async function waitUntil(cond, ms = 5000) {
     // A navigation answered with a redirect goes through the worker as the
     // browser's own navigation-preload response, and is followed.
     await page.goto(`${BASE}/.well-known/change-password`);
+    // Settled before the next navigation, as in the loop above: leaving
+    // while the browser is still reading the page's manifest has been seen
+    // to log "Manifest: Line: 1, column: 1, Syntax error." for it.
+    await page.waitForLoadState('networkidle').catch(() => {});
     check(
       '/.well-known/change-password lands on the account page’s password section',
       page.url() === `${BASE}/account.html#account-password`,
@@ -279,9 +283,13 @@ async function waitUntil(cond, ms = 5000) {
     check('the account page, which needs the server, is the offline page too', (await page.locator('h1').first().textContent()) === "You're offline");
 
     await context.setOffline(false);
-    offline = false;
     await page.goto(`${BASE}/tree.html?id=${unvisited.id}`);
     await page.waitForSelector('#nodes-layer', { state: 'attached' });
+    // Only now: the browser fetches manifest icons for itself, after a page
+    // has loaded, and the one it tried for the last offline page can report
+    // its failure a moment after the network is back (seen 30 ms after
+    // setOffline(false), before this page could have asked for any).
+    offline = false;
     check('back online, the same address loads the real page', (await page.inputValue('#tree-title')) === 'Never opened');
 
     // ---------- the Import shortcut ----------
