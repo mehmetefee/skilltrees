@@ -11,6 +11,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 // SKILLTREE_DB points the server at another database file. Tests use it to
@@ -58,12 +59,19 @@ function openDb() {
     -- Only the SHA-256 of the token is kept: a leaked database then gives an
     -- attacker no usable session cookies. Sessions expire both absolutely
     -- (expires_at) and after a stretch of inactivity (last_used_at).
+    -- created_at is when this browser signed in, and nothing else writes it:
+    -- it is what "signed in recently" is judged by (RECENT_AUTH_SEC).
+    -- public_id and user_agent exist for the account page's session list;
+    -- see startSession() in server.js. Unique through an index in migrate(),
+    -- because ADD COLUMN can't carry UNIQUE for databases made before them.
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash   TEXT PRIMARY KEY,
       user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at   TEXT NOT NULL DEFAULT (datetime('now')),
       last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
-      expires_at   TEXT NOT NULL
+      expires_at   TEXT NOT NULL,
+      public_id    TEXT,
+      user_agent   TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS skills (
@@ -253,6 +261,31 @@ function migrate(db) {
     console.log('Migrated: added users.webauthn_user_id (the passkey user handle).');
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_webauthn_user_id ON users(webauthn_user_id)');
+
+  // The session list on the account page (ASVS V3.3.4) needs a handle for
+  // each session that is safe to show, and something to tell devices apart
+  // by. Added as columns, never by rebuilding: a rebuild signs everyone out,
+  // and nothing about how sessions are secured has changed. Read again here
+  // rather than reusing sessionColumns, which the rebuild above can outdate.
+  const liveSessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+  if (!liveSessionColumns.includes('public_id')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN public_id TEXT');
+    console.log('Migrated: added sessions.public_id.');
+  }
+  if (!liveSessionColumns.includes('user_agent')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''");
+    console.log('Migrated: added sessions.user_agent (existing sessions show as an unknown device).');
+  }
+  // Sessions that predate the column get their id here — from node:crypto,
+  // like every other id a caller can name, rather than SQLite's randomblob().
+  const unnamed = db.prepare('SELECT token_hash FROM sessions WHERE public_id IS NULL').all();
+  const nameSession = db.prepare('UPDATE sessions SET public_id = ? WHERE token_hash = ?');
+  for (const row of unnamed) nameSession.run(crypto.randomBytes(16).toString('hex'), row.token_hash);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_public_id ON sessions(public_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_trees_user ON trees(user_id);
+  `);
 }
 
 // This file holds users.password_hash. SQLite creates it — and the -wal/-shm

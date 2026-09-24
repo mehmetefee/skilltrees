@@ -66,9 +66,10 @@ out, each for a reason:
   Keycloak, Okta and Entra put a name or email there; a provider that
   doesn't produces usernames like `user-2`. Calling userinfo (and checking
   its `sub` matches) fixes that, but only matters once someone hits it.
-- **Changing a username, or adding a password to a provider-made account.**
-  Both belong with password change/reset, which doesn't exist yet. The
-  account page has a place for that section.
+- **Changing a username.** Adding a password to a provider-made account is
+  done (see "Account management" below); renaming is not. It needs the
+  signup rules, a check that the new name is free, and a decision about the
+  `author` text on existing trees, which defaults to the username.
 - **More than one generic OIDC provider.** One `OIDC_*` slot covers "your
   company's SSO". Several would need a naming scheme for the env vars and
   the callback paths (each provider needs its own path, which is the mix-up
@@ -82,3 +83,43 @@ out, each for a reason:
   authentication and sender-constrained tokens. The site holds tokens for
   the length of one request and stores none, which is where these add the
   least; client secrets are what GitHub and most SSO setups hand out.
+
+## Account management: deferred on purpose
+Changing or setting a password, the session list, deleting the account and
+exporting its data are in (see CLAUDE.md, "Account management"). Left out,
+each for a reason:
+
+- **Password reset ("forgot password").** Needs a channel to the person that
+  isn't the password — in practice email: collecting and verifying an
+  address, a sending service or SMTP settings, single-use expiring reset
+  tokens stored hashed, and throttling that doesn't let anyone flood an
+  inbox. The site has no email at all today. Until then, an account with a
+  provider connected can still get in through it; one without depends on an
+  operator.
+- **Telling the owner** about a password change or a new sign-in. The same
+  missing channel. The session list is the in-site substitute.
+- **Recording how a session signed in** (password, provider, passkey). The
+  ten-minute window treats any recent sign-in as proof, so a cookie stolen
+  within ten minutes of a provider sign-in can set a password the owner
+  can't then change without knowing it. Knowing the method would let a
+  fresh provider sign-in replace that password; so would asking the provider
+  for a fresh login (`max_age=0` / `prompt=login`) before sensitive changes.
+- **Removing a password** from an account that also has a provider or a
+  passkey. Needs the same "last way in" check as disconnecting a provider
+  (`signInMethodCount()`); nobody has asked for it yet.
+- **A grace period before deletion** (soft delete, undo within N days).
+  Decided against for now: erasure should mean erasure, and a grace period
+  is keeping data after someone asked for it to go. The typed username, the
+  password and the export offered first are the guard against mistakes.
+- **Erasing a deleted account's throttle rows at once.** They are keyed on
+  the id or the username and age out within the hour (the hourly purge).
+  They are security records with a short life, and deleting them early buys
+  nothing a new signup of the same name could use.
+- **Holding a deleted username** so nobody can claim it straight away.
+  Nothing on the site links to a username once its trees are gone, so the
+  impersonation risk is small; revisit if profiles or mentions ever exist.
+- **Checking new passwords against a breach corpus** (NIST 800-63B
+  §5.1.1.2 asks for it). The list in `passwordProblem()` is the head of the
+  published lists; a full corpus is a data file or an outbound call to a
+  k-anonymity range API — a third party learning when people change
+  passwords.

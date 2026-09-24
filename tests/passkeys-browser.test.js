@@ -17,6 +17,7 @@
 const { chromium } = require('playwright');
 const crypto = require('node:crypto');
 const net = require('node:net');
+const { DatabaseSync } = require('node:sqlite');
 const { startServer } = require('./helpers/server');
 
 async function freePort() {
@@ -159,9 +160,31 @@ const AUTHENTICATOR = {
       await rows.first().locator('[data-action="remove"]').isDisabled()
     );
     const methods = page.locator('#sign-in-methods-list');
-    await methods.locator('.sign-in-method', { hasText: 'Passkeys' }).waitFor();
+    await methods.locator('.sign-in-method-name', { hasText: /^Passkeys$/ }).waitFor();
     check('Sign-in methods counts the passkey', (await methods.textContent()).includes('1 passkey'));
     check('and says there is no password', (await methods.textContent()).includes('Not set — you sign in with a passkey'));
+
+    // --- adding a passkey needs a recent sign-in. With a session from twenty
+    // minutes ago the page says so and offers "Sign in again", which signs
+    // out and comes back here — through autofill, which the virtual
+    // authenticator answers at once.
+    const db = new DatabaseSync(srv.dbPath);
+    db.prepare(`UPDATE sessions SET created_at = datetime('now', '-20 minutes')`).run();
+    db.close();
+    b.allow = /status of 403.*register\/options/;
+    await page.click('#passkey-add');
+    await page.waitForSelector('#passkey-reauth:not([hidden])', { timeout: 10000 });
+    b.allow = null;
+    check('the refusal was the 403 the page expected', b.allowed === 1);
+    check('an old session is asked to sign in again first', (await page.textContent('#passkey-error')).includes('sign in again'));
+    check('and "Sign in again" has the focus', await page.evaluate(() => document.activeElement?.id === 'passkey-reauth'));
+    await page.click('#passkey-reauth');
+    await page.waitForURL(`${BASE}/account.html#account-passkeys`, { timeout: 10000 });
+    await rows.first().waitFor();
+    check(
+      'signing in again lands back on the Passkeys section, heading focused',
+      await page.evaluate(() => document.activeElement?.id === 'passkeys-heading')
+    );
 
     // --- adding one the authenticator already holds for this account
     await page.click('#passkey-add');
@@ -242,7 +265,8 @@ const AUTHENTICATOR = {
         signCount: 0,
       },
     });
-    b.allow = /status of 401/;
+    const allowedBefore = b.allowed;
+    b.allow = /status of 401.*login\/verify/;
     await page.click('#account-sign-out');
     await page.waitForSelector('#auth-error:not([hidden])', { timeout: 10000 });
     const refusal = await page.textContent('#auth-error');
@@ -256,6 +280,7 @@ const AUTHENTICATOR = {
     check('and the authenticator was told to forget it (signalUnknownCredential)', left.length === 0);
     await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: stray });
     b.allow = null;
+    check("the refused sign-in's 401 was logged, and allowed", b.allowed > allowedBefore);
 
     // --- the button, with autofill switched off for this page load so the
     // authenticator can't answer before the click.
@@ -309,7 +334,6 @@ const AUTHENTICATOR = {
     check('no alert/confirm dialogs were raised', b.dialogs() === 0);
     check(`no unexpected console errors or CSP violations (${b.problems.length})`, b.problems.length === 0);
     if (b.problems.length) console.log(b.problems.join('\n'));
-    check(`the refused sign-in's 401 was the only console error allowed (${b.allowed})`, b.allowed >= 1);
     await b.context.close();
 
     // --- a browser without the Level 3 JSON helpers: the base64url fallback

@@ -438,6 +438,7 @@
   const emptyNote = document.getElementById('passkey-empty');
   const sectionError = document.getElementById('passkey-error');
   const addButton = document.getElementById('passkey-add');
+  const reauthButton = document.getElementById('passkey-reauth');
   let account = null;
 
   const button = (label, className) => {
@@ -448,20 +449,32 @@
     return b;
   };
 
-  // Runs a button's action with the button disabled, showing any failure in
-  // the section's error box.
-  const act = (b, action) =>
+  // Runs a button's action, showing any failure in the section's error box.
+  // A flag, not `disabled`, stops a second click while it runs: a disabled
+  // button drops keyboard focus to the page body just as the result is
+  // announced (the account settings do the same). A 403 means the server
+  // wants a recent sign-in first, so it comes with "Sign in again".
+  const act = (b, action) => {
+    let running = false;
     b.addEventListener('click', async () => {
-      b.disabled = true;
+      if (running) return;
+      running = true;
       sectionError.hidden = true;
+      reauthButton.hidden = true;
       try {
         await action();
       } catch (err) {
         const message = describeError(err, 'create');
         if (message) showNotice(sectionError, message);
-        b.disabled = false;
+        if (err.status === 403) {
+          reauthButton.hidden = false;
+          reauthButton.focus();
+        }
+      } finally {
+        running = false;
       }
     });
+  };
 
   function describePasskey(passkey) {
     const parts = [`added ${timeAgo(passkey.created_at)}`];
@@ -622,9 +635,14 @@
     const credential = await navigator.credentials.create({ publicKey: creationOptionsFromJSON(options) });
     const added = await call('/register/verify', { body: credentialToJSON(credential) });
     showToast(`Added a passkey: ${added.name}. You can rename it below.`);
-    addButton.disabled = false;
     pendingFocus = `rename-${added.id}`;
     document.dispatchEvent(new CustomEvent('account:methods-changed'));
+  });
+
+  // Signs out and comes back here, with the fresh sign-in adding a passkey
+  // needs. signInAgain() is the account settings' (account-settings.js).
+  reauthButton.addEventListener('click', () => {
+    if (typeof signInAgain === 'function') signInAgain('/account.html#account-passkeys');
   });
 
   document.addEventListener('account:signed-in', async (e) => {
@@ -637,6 +655,12 @@
       showNotice(sectionError, "This browser can't create passkeys. You can still rename or remove the ones you have.");
     }
     renderPasskeys();
+    // /account.html#account-passkeys, where a password manager's "manage
+    // passkeys" link lands: the section was still hidden when the page
+    // looked for it, so it is brought into view now.
+    if (location.hash === '#account-passkeys' && typeof revealAccountSection === 'function') {
+      revealAccountSection();
+    }
   });
 
   document.addEventListener('account:methods-changed', () => {

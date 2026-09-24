@@ -403,6 +403,19 @@ describe('passkeys', () => {
     assert.equal((await alice.me()).passkeys, 0);
   });
 
+  test('adding a passkey needs a sign-in from the last ten minutes', async () => {
+    const c = await passwordAccount(srv);
+    // A session of twenty minutes ago: still signed in, but not recently.
+    sql(srv, `UPDATE sessions SET created_at = datetime('now', '-20 minutes')`);
+    const stale = await c.post('/api/auth/passkeys/register/options');
+    assert.equal(stale.status, 403);
+    assert.match(stale.data.error, /sign in again/i);
+    // Signing in again is what it asks for.
+    const again = await c.post('/api/auth/login', { username: c.username, password: PASSWORD });
+    assert.equal(again.status, 200);
+    assert.equal((await addPasskey(c, newAuth())).res.status, 201);
+  });
+
   test('registration needs a session', async () => {
     const res = await client(srv).post('/api/auth/passkeys/register/options');
     assert.equal(res.status, 401);

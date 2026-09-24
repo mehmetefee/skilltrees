@@ -361,9 +361,13 @@ async function saveHeader() {
 
   showSaveStatus('Saving…');
   try {
-    const existed = !!treeId;
+    // Only the call that starts the create has its values in that POST. One
+    // that arrives while the create is still in flight — typing on after the
+    // first save began — must PATCH once it lands, or its edits are lost
+    // while the page says "Saved".
+    const sentWithCreate = !treeId && !pendingCreate;
     await ensureSaved();
-    if (existed) {
+    if (!sentWithCreate) {
       await apiFetch(`/trees/${treeId}`, {
         method: 'PATCH',
         body: JSON.stringify({ title, description, author }),

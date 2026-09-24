@@ -347,12 +347,20 @@ function showAccountView(user, providers, connected) {
     if (provider) showToast(`Connected ${provider.name}.`);
   }
   renderSignInMethods(user, providers);
-  // A way in was added or removed, here or in the passkeys section: both
-  // sections redraw from the server, which decides what may be removed.
+  // A way in was added or removed — a provider here, a passkey or the
+  // password further down: every section showing ways in redraws from the
+  // server, which decides what may be removed. `user` is shared with
+  // account-settings.js, so it is brought up to date rather than replaced.
   document.addEventListener('account:methods-changed', async () => {
     const fresh = await loadSignedInUser();
-    if (fresh) renderSignInMethods(fresh, providers);
+    if (!fresh) return;
+    Object.assign(user, fresh);
+    renderSignInMethods(user, providers);
   });
+  // The password, sessions, your data and deleting the account live in
+  // account-settings.js, which only account.html loads; passkeys in
+  // passkeys.js, which listens for this.
+  if (typeof setupAccountSettings === 'function') setupAccountSettings(user, providers);
   document.dispatchEvent(new CustomEvent('account:signed-in', { detail: { user } }));
 }
 
@@ -412,6 +420,11 @@ async function renderSignInMethods(user, providers) {
 
   list.textContent = '';
 
+  // Changing or setting it happens in its own section further down the page.
+  const toPassword = document.createElement('a');
+  toPassword.className = 'btn btn-small';
+  toPassword.href = '#account-password';
+  toPassword.textContent = user.has_password ? 'Change' : 'Set a password';
   row(
     'Password',
     user.has_password
@@ -419,10 +432,15 @@ async function renderSignInMethods(user, providers) {
       : passkeys > 0
         ? 'Not set — you sign in with a passkey'
         : 'Not set — you sign in through a provider below',
-    null
+    toPassword
   );
+  // Passkeys, likewise, are managed in their own section.
   if (passkeys > 0) {
-    row('Passkeys', `${passkeys} passkey${passkeys === 1 ? '' : 's'} — managed under Passkeys below`, null);
+    const toPasskeys = document.createElement('a');
+    toPasskeys.className = 'btn btn-small';
+    toPasskeys.href = '#account-passkeys';
+    toPasskeys.textContent = 'Manage';
+    row('Passkeys', `${passkeys} passkey${passkeys === 1 ? '' : 's'}`, toPasskeys);
   }
 
   for (const identity of identities) {
