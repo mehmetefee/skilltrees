@@ -154,8 +154,8 @@ function treeJsonLd({ tree, skillNames, origin }) {
     '@type': 'LearningResource',
     name: tree.title,
   };
-  if (tree.description) data.description = tree.description;
-  if (tree.author) data.author = { '@type': 'Person', name: tree.author };
+  if (tree.description && tree.description.trim()) data.description = tree.description;
+  if (tree.author && tree.author.trim()) data.author = { '@type': 'Person', name: tree.author };
   if (created) data.dateCreated = created;
   if (origin) data.url = `${origin}/tree.html?id=${tree.id}`;
   if (skillNames.length) data.teaches = skillNames.slice(0, MAX_TAUGHT);
@@ -169,9 +169,9 @@ function treeJsonLd({ tree, skillNames, origin }) {
 function treeHead({ tree, skillCount, skillNames, origin }) {
   const title = tree.title;
   const skills = `${skillCount} skill${skillCount === 1 ? '' : 's'}`;
-  const description = tree.description
-    ? oneLine(tree.description)
-    : oneLine(`${title}: a skill tree of ${skills}${tree.author ? `, by ${tree.author}` : ''}.`);
+  const description =
+    oneLine(tree.description) ||
+    oneLine(`${title}: a skill tree of ${skills}${tree.author ? `, by ${tree.author}` : ''}.`);
   const created = isoDatetime(tree.created_at);
   const lines = [
     `<title>${escapeHtml(title)} — ${SITE_NAME}</title>`,

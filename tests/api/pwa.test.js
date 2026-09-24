@@ -480,6 +480,18 @@ test('lib/meta.js escapers', () => {
   assert.equal(meta.oneLine('a\n\n b\tc'), 'a b c');
   const long = meta.oneLine('word '.repeat(100));
   assert.ok(long.length <= 200 && long.endsWith('…'), long);
+  // A blank description gets the made-up one; a missing date, no date.
+  const blank = meta.treeHead({
+    tree: { id: 3, title: 'T', description: '  \n ', author: '', created_at: null },
+    skillCount: 1,
+    skillNames: ['A'],
+  });
+  assert.match(blank, /<meta name="description" content="T: a skill tree of 1 skill\." \/>/);
+  assert.doesNotMatch(blank, /article:published_time/);
+  const blankLd = JSON.parse(jsonLdOf(blank));
+  assert.equal(blankLd.description, undefined);
+  assert.equal(blankLd.author, undefined);
+  assert.equal(blankLd.dateCreated, undefined);
   // A marker whose closing half is missing leaves the page alone.
   const broken = '<head><!--@tree-meta--><title>x</title></head>';
   assert.equal(
