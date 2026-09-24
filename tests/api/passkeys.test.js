@@ -152,6 +152,17 @@ describe('with PUBLIC_ORIGIN unset', () => {
     assert.equal((await c.me()).passkeys, 0);
     await logged(srv, /Passkeys: off \(PUBLIC_ORIGIN is not set/);
   });
+
+  test('an origin by IP address leaves them off too, and advertises no passkey endpoints', async () => {
+    const byIp = await startServer({ env: { PUBLIC_ORIGIN: 'http://127.0.0.1:3141' } });
+    try {
+      assert.deepEqual((await byIp.request('/api/auth/passkeys/config')).data, { enabled: false });
+      assert.equal((await byIp.request('/.well-known/passkey-endpoints')).status, 404);
+      await logged(byIp, /Passkeys are OFF: PUBLIC_ORIGIN names an IP address/);
+    } finally {
+      await byIp.stop();
+    }
+  });
 });
 
 // ---------- the main suite ----------

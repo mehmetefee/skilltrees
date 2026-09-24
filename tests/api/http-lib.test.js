@@ -31,6 +31,8 @@ test('isCompressible: text yes, fonts and images no', () => {
     'application/json',
     'application/problem+json',
     'application/manifest+json',
+    'application/speculationrules+json',
+    'application/xml; charset=utf-8',
     'image/svg+xml',
   ]) {
     assert.ok(isCompressible(t), t);

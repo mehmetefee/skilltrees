@@ -138,9 +138,9 @@ a password sign-in, and the Signal API. Left out, each for a reason:
 - **Related origins** (`/.well-known/webauthn`, Level 3). Passkeys are
   scoped to `PUBLIC_ORIGIN`'s host; serving www and the bare domain both, or
   a second domain, needs that file and an allowlist. Serve one canonical
-  host instead, as for provider sign-in. `/.well-known/passkey-endpoints`
-  (pointing at `/account.html#account-passkeys`) is a separate, small piece
-  of work — the section keeps that id for it.
+  host instead, as for provider sign-in. (`/.well-known/passkey-endpoints`,
+  which is in, only tells password managers where to manage passkeys:
+  `/account.html#account-passkeys`, the section's id.)
 - **Moving to a new host.** Changing `PUBLIC_ORIGIN`'s host strands every
   passkey (they're bound to the old RP ID). They stay listed, removable and
   uncounted; a migration would need related origins first, then a period
@@ -162,3 +162,37 @@ a password sign-in, and the Signal API. Left out, each for a reason:
   the page distinguishes those cases yet; the browser's own chooser does.
 - **PRF, largeBlob and other extensions.** Nothing here encrypts anything
   client-side.
+
+## Installable app, offline, search metadata: deferred
+The manifest, the network-first service worker, page metadata, robots.txt,
+the sitemap and the well-known URLs are in (CLAUDE.md, "Installable app,
+offline reading and search metadata"). Left for later, each for a reason:
+
+- **`trees.updated_at`.** Would give the sitemap an honest `lastmod` (it
+  uses `created_at` now), tree pages a `Last-Modified` (they send none, so
+  a crawler sending only `If-Modified-Since` always gets a 200), and JSON-LD
+  a `dateModified`. Needs a migration and every write route to touch it,
+  skills and links included.
+- **A sitemap index** once there are more than 50,000 trees. The sitemap
+  stops at the protocol's cap, keeping the newest.
+- **Editing offline.** Queuing writes (Background Sync) would mean replaying
+  them later against checks — ownership, cycles — that may fail by then,
+  with nobody there to see why. Offline stays read-only.
+- **A timeout on network-first.** On a connection that is up but hopeless
+  ("lie-fi"), a page waits for the browser to give up before the cached copy
+  is used. A timeout would fall back sooner, at the cost of serving a stale
+  page to someone who was merely on a slow line — which is exactly what the
+  network-first rule exists to prevent.
+- **The static routing API** (`InstallEvent.addRoutes()`) could send
+  `/api/auth/*` straight to the network without starting the worker at all.
+  Chromium only so far; the fetch handler's rule does the same everywhere.
+- **A preview image per tree** (a drawing of the graph as `og:image`). Needs
+  rendering on the server, which means a dependency or a lot of SVG-to-PNG
+  code; every page shares the one social card for now.
+- **The tree's title in the page body, server-side.** Only the `<head>` is
+  filled in; a crawler that doesn't run script sees the title there and in
+  JSON-LD, but not in the visible heading.
+- **`share_target` and `file_handlers` in the manifest**, so the installed
+  app could receive a shared `.json` or open one from the file manager into
+  the import dialog. `share_target` with a file needs the worker to accept a
+  POST, which it deliberately never intercepts today.

@@ -112,6 +112,31 @@ auto-layout tree. Once it's decided, replace those SKIPs with the answer.
 | `passkeys-browser.test.js` | Passkeys in Chromium with a virtual authenticator attached over CDP (`WebAuthn.addVirtualAuthenticator`: CTAP2, internal, resident keys, user verification): sign-up with a passkey, the account page's Passkeys section (list, "only way in", add — including one the authenticator already holds, rename inline, remove with confirmation), "sign in again" for an old session, both Signal API calls (the authenticator really forgets the credential), signing in with the button and through autofill, a password sign-in with autofill pending, and a second pass without the Level 3 JSON helpers to exercise the base64url fallback. Picks a free port first, since `PUBLIC_ORIGIN` must be `http://localhost:<port>`. Fails on any console error or CSP violation except the refusals it provokes. |
 | `account-browser.test.js` | The account page's own sections in Chromium: ending another session and "sign out everywhere else", changing a password (a wrong one first), downloading your data, deleting the account through its dialog (Escape, a wrong name, a wrong password, then for real), and "sign in again" for an account without a password. Focus and live-region checks throughout; fails on any console error or CSP violation except the refusals it provokes. Starts its own server. |
 | `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. |
+| `pwa-browser.test.js` | The installable app: the manifest parses with no errors and Chromium reports nothing stopping an install; the service worker takes control with navigation preload on; a tree visited online opens offline (page and data) and an unvisited page gets `offline.html`; an edit to a file on disk shows on a plain reload (network first); speculation rules accepted, a hovered tree link prefetched and a draft link not; no console errors or CSP violations. Starts its own server; uses a persistent browser profile, since Chromium never offers to install from an incognito-style context. |
+
+### The service worker and these suites
+
+Every page registers `frontend/sw.js`, so from the second page a suite
+opens, requests go through it. It is network first and never touches
+writes or `/api/auth/*`, so suites that just click around see the same
+responses as before. Two things behave differently under a worker:
+
+- **`page.route()` / `context.route()` don't see what the worker fetches.**
+  A suite that mocks or intercepts responses should launch its context
+  with the worker blocked, so the page talks to the network directly:
+
+  ```js
+  const context = await browser.newContext({ serviceWorkers: 'block' });
+  ```
+
+- **Requests the worker makes are invisible to `context.on('request')`**
+  unless `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1` is set before
+  the browser launches (`pwa-browser.test.js` sets it, to see the worker
+  go to the network). `context.setOffline(true)` does reach the worker.
+
+`pwa-browser.test.js` checks that edits show on a reload by writing two
+probe files into `frontend/` (`pwa-probe-<pid>.*`, git-ignored) and
+removing them when it finishes, pass or fail.
 
 ## A note on what these caught
 
@@ -155,6 +180,7 @@ client already carrying that account's session cookie.
 | `api/smoke.test.js` | Public reads, signed-in writes, owner-only changes, the Origin check. |
 | `api/http.test.js` | The HTTP layer: problem details, ETags/304, compression, HEAD/OPTIONS/405, 415, 413, 429 fields, security headers, `/api/reports`, Fetch Metadata, Early Hints, security.txt, graceful shutdown. Uses `node:http` rather than `fetch`, which would decode bodies and swallow 103s. |
 | `api/http-lib.test.js` | Unit checks for `backend/lib/http.js`; starts no server. |
+| `api/pwa.test.js` | The web app manifest (shape, type, icons that exist at their declared sizes), `sw.js` (type, `no-cache`, its own CSP; every precached URL exists; its caching rules, run from the worker's own source), `<head>` metadata on every page with and without `PUBLIC_ORIGIN`, a tree page's title/description/Open Graph/JSON-LD with hostile text in every field coming out inert, its ETag/304/HEAD/compression, robots.txt, sitemap.xml, the two well-known URLs, and the speculation rules. |
 | `api/oauth.test.js` | Provider sign-in end to end against the mock provider: PKCE, state, `iss`, nonce and ID-token checks, login CSRF, linking and unlinking, cookie naming. |
 | `api/oauth-lib.test.js` | Unit checks for `backend/lib/oauth.js`: ID-token verification, JWKS caching, discovery, outbound-request limits. |
 | `api/passkeys.test.js` | Passkeys end to end, driven by the software authenticator: register and sign in with ES256, EdDSA and RS256; passkey sign-up; options shape; challenge replay, expiry, cross-purpose use, browser and account binding; wrong origin, RP ID, type or framing; UP/UV; bad signatures; the counter rule (clones logged); BE/BS; user-handle mismatch; unknown credentials; excludeCredentials; duplicate credential IDs; algorithms and weak RSA; attestation formats; the list, rename and remove (owner-only); the last-way-in rule; RP ID changes; the automatic upgrade; the recent sign-in adding one needs; malformed input never a 500; throttling. |

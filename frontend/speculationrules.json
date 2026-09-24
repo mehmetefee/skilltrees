@@ -1,0 +1,16 @@
+{
+  "prefetch": [
+    {
+      "source": "document",
+      "where": {
+        "and": [
+          { "href_matches": "/tree.html?id=*" },
+          { "not": { "href_matches": "/api/*" } },
+          { "not": { "href_matches": "/account.html*" } },
+          { "not": { "selector_matches": "[data-no-prefetch], [data-no-prefetch] *" } }
+        ]
+      },
+      "eagerness": "moderate"
+    }
+  ]
+}
