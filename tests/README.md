@@ -100,6 +100,14 @@ touch your working database, and can run in parallel — every one gets fresh
 accounts and fresh rate-limit counters. The helper's `signup(name)` returns a
 client already carrying that account's session cookie.
 
+| File | Covers |
+| --- | --- |
+| `api/smoke.test.js` | Public reads, signed-in writes, owner-only changes, the Origin check. |
+| `api/http.test.js` | The HTTP layer: problem details, ETags/304, compression, HEAD/OPTIONS/405, 415, 413, 429 fields, security headers, `/api/reports`, Fetch Metadata, Early Hints, security.txt, graceful shutdown. Uses `node:http` rather than `fetch`, which would decode bodies and swallow 103s. |
+| `api/http-lib.test.js` | Unit checks for `backend/lib/http.js`; starts no server. |
+| `api/oauth.test.js` | Provider sign-in end to end against the mock provider: PKCE, state, `iss`, nonce and ID-token checks, login CSRF, linking and unlinking, cookie naming. |
+| `api/oauth-lib.test.js` | Unit checks for `backend/lib/oauth.js`: ID-token verification, JWKS caching, discovery, outbound-request limits. |
+
 The OAuth suites (`api/oauth.test.js`, `api/oauth-lib.test.js`) use
 `helpers/mock-oidc.js`: a zero-dependency OpenID Connect provider on
 127.0.0.1 — discovery, an auto-approving `/authorize`, a `/token` that checks

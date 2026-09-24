@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Skill Trees API",
-    "description": "Backend API for a public skill-tree sharing site. Reading is public and needs no account; creating or changing a tree requires a session, and a tree may only be modified by the account that created it. Zero external dependencies: node:http and node:sqlite only.",
+    "description": "Backend API for a public skill-tree sharing site. Reading is public and needs no account; creating or changing a tree requires a session, and a tree may only be modified by the account that created it. Zero external dependencies: node:http and node:sqlite only. Errors are RFC 9457 problem details (application/problem+json) that keep the older `error` (and, for rejected imports, `problems`) members. Every GET also answers HEAD. A known path asked with a method it doesn't take answers 405 with an Allow header (components/responses/MethodNotAllowed), and OPTIONS answers Allow with no CORS headers: cross-origin use is unsupported. A request body must be declared application/json, or it is refused with 415. Cross-site requests are refused with 403 unless they are top-level GET navigations (W3C Fetch Metadata), as are state-changing requests whose Origin is another host. Responses are compressed (br, gzip) when the client accepts it, and GETs carry an ETag and answer If-None-Match with 304.",
     "version": "1.0.0"
   },
   "servers": [
@@ -16,7 +16,8 @@
     { "name": "Trees", "description": "Skill trees" },
     { "name": "Skills", "description": "Individual skills inside a tree" },
     { "name": "Prerequisites", "description": "Directed links between skills" },
-    { "name": "Import Export", "description": "The portable JSON tree format" }
+    { "name": "Import Export", "description": "The portable JSON tree format" },
+    { "name": "Reports", "description": "Browser security reports (CSP violations)" }
   ],
   "paths": {
     "/api/auth/signup": {
@@ -44,6 +45,7 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "$ref": "#/components/responses/TooManyRequests" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
@@ -74,6 +76,7 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "$ref": "#/components/responses/TooManyRequests" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
@@ -276,6 +279,7 @@
         "responses": {
           "200": {
             "description": "Every tree, with its skill count",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
             "content": {
               "application/json": {
                 "schema": {
@@ -286,6 +290,7 @@
               }
             }
           },
+          "304": { "$ref": "#/components/responses/NotModified" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       },
@@ -311,6 +316,7 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
@@ -325,10 +331,12 @@
         "responses": {
           "200": {
             "description": "The tree, its skills and its links",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/TreeDetail" } }
             }
           },
+          "304": { "$ref": "#/components/responses/NotModified" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
@@ -357,6 +365,7 @@
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       },
@@ -404,6 +413,7 @@
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
@@ -433,6 +443,7 @@
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       },
@@ -482,6 +493,7 @@
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
@@ -530,12 +542,14 @@
               "Content-Disposition": {
                 "description": "Attachment filename derived from the tree title.",
                 "schema": { "type": "string", "maxLength": 300 }
-              }
+              },
+              "ETag": { "$ref": "#/components/headers/ETag" }
             },
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/Notation" } }
             }
           },
+          "304": { "$ref": "#/components/responses/NotModified" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
@@ -568,6 +582,7 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
@@ -594,6 +609,33 @@
           "400": { "$ref": "#/components/responses/ValidationProblems" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/reports": {
+      "post": {
+        "operationId": "receiveReports",
+        "summary": "Receive CSP violation reports from browsers",
+        "description": "The endpoint pages name in Reporting-Endpoints (csp-endpoint) and in their CSP's report-to and report-uri. Takes the Reporting API's application/reports+json (an array of reports) and CSP2's application/csp-report (one report). Bodies are capped at 64 KB; the endpoint is throttled per address (10 per 15 minutes). Each report is logged as one line, with query strings removed from its URLs; nothing is stored.",
+        "tags": ["Reports"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/reports+json": { "schema": { "$ref": "#/components/schemas/ReportList" } },
+            "application/csp-report": { "schema": { "$ref": "#/components/schemas/CspReport" } }
+          }
+        },
+        "responses": {
+          "204": { "description": "Received" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
@@ -620,6 +662,30 @@
       "ClearSiteData": {
         "description": "W3C Clear Site Data. Always \"cookies\".",
         "schema": { "type": "string", "enum": ["\"cookies\""] }
+      },
+      "ETag": {
+        "description": "Strong validator for this representation (RFC 9110 §8.8.3), distinct per Content-Encoding. Send it back in If-None-Match to get a 304 when nothing changed.",
+        "schema": { "type": "string", "maxLength": 100 }
+      },
+      "Allow": {
+        "description": "The methods this path takes (RFC 9110 §10.2.1).",
+        "schema": { "type": "string", "maxLength": 100, "example": "GET, HEAD, POST, OPTIONS" }
+      },
+      "Accept": {
+        "description": "The request media types this operation takes (RFC 9110 §15.5.16).",
+        "schema": { "type": "string", "maxLength": 200, "example": "application/json" }
+      },
+      "RetryAfter": {
+        "description": "Seconds to wait before trying again (RFC 9110 §10.2.3).",
+        "schema": { "type": "integer", "minimum": 0, "maximum": 86400, "example": 900 }
+      },
+      "RateLimitPolicy": {
+        "description": "The quota policy that was hit, as an Internet-Draft structured field (draft-ietf-httpapi-ratelimit-headers-11): q is the quota, w the window in seconds. Advisory until the draft is published.",
+        "schema": { "type": "string", "maxLength": 200, "example": "\"attempts\";q=10;w=900" }
+      },
+      "RateLimit": {
+        "description": "Remaining quota (r) and seconds until it is restored (t), per the same draft.",
+        "schema": { "type": "string", "maxLength": 200, "example": "\"attempts\";r=0;t=900" }
       }
     },
     "parameters": {
@@ -660,41 +726,59 @@
       }
     },
     "responses": {
+      "NotModified": {
+        "description": "The If-None-Match validator still matches; use the stored copy"
+      },
       "BadRequest": {
         "description": "The request was malformed or failed validation",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "Unauthorized": {
         "description": "Not signed in, or the credentials were wrong",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "Forbidden": {
-        "description": "Signed in, but this is not your tree (or it has no owner and is read-only)",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "description": "Signed in, but this is not your tree (or it has no owner and is read-only); or a cross-site request (Fetch Metadata, or an Origin that isn't this host)",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "NotFound": {
         "description": "No such resource",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "Conflict": {
         "description": "Already exists",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "MethodNotAllowed": {
+        "description": "The path exists but doesn't take this method. Not listed per operation, since it answers the methods that aren't there.",
+        "headers": { "Allow": { "$ref": "#/components/headers/Allow" } },
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "The request body wasn't declared as a type this operation takes (application/json unless stated), wasn't UTF-8, or was content-encoded",
+        "headers": { "Accept": { "$ref": "#/components/headers/Accept" } },
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "PayloadTooLarge": {
         "description": "Request body exceeded 1 MB",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "TooManyRequests": {
         "description": "Too many attempts; throttled",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "headers": {
+          "Retry-After": { "$ref": "#/components/headers/RetryAfter" },
+          "RateLimit-Policy": { "$ref": "#/components/headers/RateLimitPolicy" },
+          "RateLimit": { "$ref": "#/components/headers/RateLimit" }
+        },
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "ValidationProblems": {
         "description": "The document was rejected, with a list of reasons",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } }
       },
       "ServerError": {
         "description": "Unexpected server error",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       }
     },
     "schemas": {
@@ -705,23 +789,73 @@
         "properties": { "ok": { "type": "boolean" } }
       },
       "Error": {
+        "description": "An RFC 9457 problem details object. type is about:blank, so title is the HTTP status phrase; detail says what went wrong. error repeats detail for clients written before problem details.",
         "type": "object",
         "additionalProperties": false,
-        "required": ["error"],
+        "required": ["type", "title", "status", "detail", "error"],
         "properties": {
-          "error": { "type": "string", "maxLength": 300 }
+          "type": { "type": "string", "format": "uri-reference", "maxLength": 300, "example": "about:blank" },
+          "title": { "type": "string", "maxLength": 100, "example": "Not Found" },
+          "status": { "type": "integer", "format": "int32", "minimum": 400, "maximum": 599, "example": 404 },
+          "detail": { "type": "string", "maxLength": 300, "example": "Tree not found" },
+          "error": { "type": "string", "maxLength": 300, "example": "Tree not found" }
         }
       },
       "ValidationError": {
+        "description": "A problem details object (see Error) that also lists each reason the document was rejected.",
         "type": "object",
         "additionalProperties": false,
-        "required": ["error"],
+        "required": ["type", "title", "status", "detail", "error"],
         "properties": {
+          "type": { "type": "string", "format": "uri-reference", "maxLength": 300, "example": "about:blank" },
+          "title": { "type": "string", "maxLength": 100, "example": "Bad Request" },
+          "status": { "type": "integer", "format": "int32", "minimum": 400, "maximum": 599, "example": 400 },
+          "detail": { "type": "string", "maxLength": 300 },
           "error": { "type": "string", "maxLength": 300 },
           "problems": {
             "type": "array",
             "maxItems": 500,
             "items": { "type": "string", "maxLength": 500 }
+          }
+        }
+      },
+      "ReportList": {
+        "description": "A Reporting API upload (W3C Reporting API): a list of reports. Only type and body are read.",
+        "type": "array",
+        "maxItems": 100,
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "maxLength": 100, "example": "csp-violation" },
+            "age": { "type": "integer", "format": "int64", "minimum": 0, "maximum": 9007199254740991 },
+            "url": { "type": "string", "maxLength": 2048 },
+            "user_agent": { "type": "string", "maxLength": 1000 },
+            "body": {
+              "type": "object",
+              "properties": {
+                "documentURL": { "type": "string", "maxLength": 2048 },
+                "blockedURL": { "type": "string", "maxLength": 2048 },
+                "effectiveDirective": { "type": "string", "maxLength": 100 },
+                "disposition": { "type": "string", "enum": ["enforce", "report"] }
+              }
+            }
+          }
+        }
+      },
+      "CspReport": {
+        "description": "A CSP Level 2 report-uri body.",
+        "type": "object",
+        "required": ["csp-report"],
+        "properties": {
+          "csp-report": {
+            "type": "object",
+            "properties": {
+              "document-uri": { "type": "string", "maxLength": 2048 },
+              "blocked-uri": { "type": "string", "maxLength": 2048 },
+              "violated-directive": { "type": "string", "maxLength": 100 },
+              "effective-directive": { "type": "string", "maxLength": 100 },
+              "disposition": { "type": "string", "enum": ["enforce", "report"] }
+            }
           }
         }
       },

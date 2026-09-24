@@ -33,7 +33,19 @@ const skip = (label) => console.log(`SKIP - ${label}`);
     process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}
   );
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  await context.grantPermissions(['clipboard-write'], { origin: BASE });
+  // The site's Permissions-Policy denies clipboard-read — it only ever writes
+  // — so the test can't read the clipboard back from the page. It records
+  // what the page writes instead; the real write still goes through.
+  await context.addInitScript(() => {
+    const clipboard = navigator.clipboard;
+    if (!clipboard || !clipboard.writeText) return;
+    const write = clipboard.writeText.bind(clipboard);
+    clipboard.writeText = (text) => {
+      window.__lastClipboardWrite = text;
+      return write(text);
+    };
+  });
   const page = await context.newPage();
   const consoleErrors = [];
   page.on('console', (msg) => {
@@ -316,7 +328,7 @@ const skip = (label) => console.log(`SKIP - ${label}`);
     // ---------- Share ----------
     await page.click('#share-btn');
     await page.waitForTimeout(300);
-    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    const clip = await page.evaluate(() => window.__lastClipboardWrite);
     check('Share copies the tree link where there is no share sheet', clip === `${BASE}/tree.html?id=${tree.id}`, clip);
     check('...and says so', /copied/i.test(await page.textContent('#toast')));
     await page.goto(BASE + '/tree.html');
