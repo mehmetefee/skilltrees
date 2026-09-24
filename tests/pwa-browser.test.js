@@ -39,6 +39,14 @@ const check = (label, cond, detail) => {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Polls until `cond()` holds or `ms` pass. DevTools events arrive when the
+// browser gets round to them, which on a loaded machine can be well after a
+// fixed sleep would have given up.
+async function waitUntil(cond, ms = 5000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline && !cond()) await sleep(50);
+  return cond();
+}
 
 (async () => {
   const srv = await startServer();
@@ -163,7 +171,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     cdp.on('Preload.prefetchStatusUpdated', (e) => prefetches.push({ url: e.prefetchUrl, status: e.status, why: e.prefetchStatus }));
     await page.goto(`${BASE}/`);
     await page.waitForSelector(`#tree-grid a[href="/tree.html?id=${tree.id}"]`);
-    await sleep(300);
+    await waitUntil(() => ruleSets.some((r) => r.url === `${BASE}/speculationrules.json`));
     const rules = ruleSets.find((r) => r.url === `${BASE}/speculationrules.json`);
     check('the speculation rules are loaded from the Speculation-Rules header', !!rules, ruleSets.map((r) => r.url));
     check('and accepted without errors', rules && !rules.errorType && !rules.errorMessage, rules && rules.errorMessage);
@@ -184,7 +192,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     await page.click(`#tree-grid a[href="/tree.html?id=${tree.id}"]`);
     await page.waitForSelector('#nodes-layer > g');
-    await sleep(200);
+    await waitUntil(() => prefetches.some((p) => p.url === treeUrl && p.why === 'PrefetchResponseUsed'), 3000);
     check('the click used the prefetched page', prefetches.some((p) => p.url === treeUrl && p.why === 'PrefetchResponseUsed'), prefetches);
 
     // ---------- the tree page's server-written metadata ----------

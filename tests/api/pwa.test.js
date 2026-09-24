@@ -140,8 +140,11 @@ test('the manifest is served as application/manifest+json and describes an insta
   assert.equal(m.background_color, bg);
   assert.equal(m.theme_color, bg);
 
-  const svg = m.icons.find((i) => i.type === 'image/svg+xml');
-  assert.equal(svg.sizes, 'any');
+  // PNG only. Chromium rasterises an SVG manifest icon out of process, and
+  // on a busy machine that fails with "Download error or resource isn't a
+  // valid image" logged to the page's console; the PNGs cover every size a
+  // platform asks for. The tab favicon stays SVG.
+  assert.ok(m.icons.every((i) => i.type === 'image/png'), 'manifest icons are PNG');
   const png = (size, purpose) =>
     m.icons.find((i) => i.type === 'image/png' && i.sizes === `${size}x${size}` && (i.purpose || 'any') === purpose);
   assert.ok(png(192, 'any'), '192px icon');

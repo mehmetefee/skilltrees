@@ -271,6 +271,11 @@ that keeps trees readable offline, and describes itself to crawlers and
 link previews. Chromium reports no installability errors and no manifest
 warnings; `tests/pwa-browser.test.js` checks both.
 
+- **Manifest icons are PNG only**, though the favicon is SVG. Chromium
+  rasterises an SVG manifest icon out of process, and on a loaded machine
+  that intermittently fails with "Download error or resource isn't a valid
+  image" in the page's console; the 192/512 PNGs (and the maskable one)
+  cover every size a platform asks for.
 - **The service worker is network first for everything.** Pages, scripts,
   styles, and the two public API reads (`GET /api/trees`, `GET
   /api/trees/:id`) always go to the network; the cache is consulted only

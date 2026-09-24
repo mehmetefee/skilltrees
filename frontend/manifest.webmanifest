@@ -10,14 +10,11 @@
   "background_color": "#f6f8fa",
   "lang": "en",
   "dir": "ltr",
-  "categories": ["education", "productivity"],
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "icons": [
-    {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
@@ -43,14 +40,26 @@
       "short_name": "New tree",
       "description": "Start a new skill tree",
       "url": "/tree.html",
-      "icons": [{ "src": "/icons/shortcut-new-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/shortcut-new-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Import a skill tree",
       "short_name": "Import",
       "description": "Import a skill tree from a JSON file",
       "url": "/#import",
-      "icons": [{ "src": "/icons/shortcut-import-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/shortcut-import-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }
