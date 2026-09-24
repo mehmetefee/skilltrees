@@ -51,3 +51,34 @@ Trees now belong to the account that made them, and only that account can
 change them. Reading stays public and account-free. Trees created before
 this are owned by nobody and are read-only through the API on purpose —
 there was no way to work out who had made them.
+
+## Sign-in through providers: deferred on purpose
+GitHub, Google and one generic OpenID Connect provider are in (see
+CLAUDE.md, "Signing in through GitHub, Google or an OIDC provider"). Left
+out, each for a reason:
+
+- **Revoking GitHub's access token** after reading `/user`
+  (`DELETE /applications/{client_id}/token`). The token is never stored or
+  logged and carries no scopes — public profile only — so revoking it buys
+  little for a second outbound call on every sign-in, with its own failures.
+  Worth doing if a scope is ever requested.
+- **The userinfo endpoint.** Names come from the ID token only. Google,
+  Keycloak, Okta and Entra put a name or email there; a provider that
+  doesn't produces usernames like `user-2`. Calling userinfo (and checking
+  its `sub` matches) fixes that, but only matters once someone hits it.
+- **Changing a username, or adding a password to a provider-made account.**
+  Both belong with password change/reset, which doesn't exist yet. The
+  account page has a place for that section.
+- **More than one generic OIDC provider.** One `OIDC_*` slot covers "your
+  company's SSO". Several would need a naming scheme for the env vars and
+  the callback paths (each provider needs its own path, which is the mix-up
+  defence for providers that don't send `iss`).
+- **A clearer error when the button is clicked on a host other than
+  `PUBLIC_ORIGIN`'s** (www vs the bare domain, say). The flow cookie is set on
+  the host that was clicked, so the callback then reports an expired
+  sign-in. Refusing at the start with a message naming the right host would
+  be kinder; serving one canonical host avoids it entirely.
+- **`private_key_jwt`, PAR (RFC 9126) and DPoP.** Stronger client
+  authentication and sender-constrained tokens. The site holds tokens for
+  the length of one request and stores none, which is where these add the
+  least; client secrets are what GitHub and most SSO setups hand out.

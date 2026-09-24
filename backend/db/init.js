@@ -42,6 +42,9 @@ function openDb() {
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- password_hash is '' for an account made through another provider,
+    -- which has no password. See NO_PASSWORD in server.js for why that is a
+    -- sentinel rather than a NULL.
     CREATE TABLE IF NOT EXISTS users (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -87,6 +90,46 @@ function openDb() {
       first_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- Sign-ins through another provider (GitHub, Google, an OpenID Connect
+    -- provider), attached to an account. The person is identified at the
+    -- provider by (issuer, subject) — OIDC Core §5.7 names that pair as the
+    -- only stable identifier, since a subject is unique only within its
+    -- issuer. Never by email: an address can be unverified, or re-registered
+    -- by someone else, and matching on it hands the account to them.
+    -- provider says which button this came through ('github', 'google',
+    -- 'oidc'); display_name is only for showing which account is connected.
+    CREATE TABLE IF NOT EXISTS user_identities (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider     TEXT NOT NULL,
+      issuer       TEXT NOT NULL,
+      subject      TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(issuer, subject)
+    );
+
+    -- One row per sign-in that has been sent to a provider and not come back.
+    -- Server-side, so nothing the browser carries can be edited into a
+    -- different flow. state_hash is the lookup key and browser_hash binds the
+    -- flow to the browser that started it; both are SHA-256 only, like session
+    -- tokens, so reading this table gives nothing that completes a sign-in.
+    -- The PKCE verifier and nonce have to be kept as they are, to be sent and
+    -- compared. Rows are single-use and live ten minutes.
+    CREATE TABLE IF NOT EXISTS oauth_flows (
+      state_hash    TEXT PRIMARY KEY,
+      browser_hash  TEXT NOT NULL,
+      provider      TEXT NOT NULL,
+      code_verifier TEXT NOT NULL,
+      nonce         TEXT,
+      intent        TEXT NOT NULL,
+      next_path     TEXT NOT NULL,
+      link_user_id  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at    TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_identities_user ON user_identities(user_id);
     CREATE INDEX IF NOT EXISTS idx_skills_tree ON skills(tree_id);
     CREATE INDEX IF NOT EXISTS idx_prereqs_tree ON prereqs(tree_id);
     CREATE INDEX IF NOT EXISTS idx_prereqs_skill ON prereqs(skill_id);

@@ -9,6 +9,7 @@ const crypto = require('node:crypto');
 const { promisify } = require('node:util');
 const { openDb } = require('./db/init');
 const { hasControlChars, logSafe, stripControlChars } = require('./lib/text');
+const oauth = require('./lib/oauth');
 const {
   treeToNotation,
   notationToRecords,
@@ -123,7 +124,16 @@ function cleanText(str, maxLen = 500) {
 // and NIST SP 800-63B, using only node:crypto so the zero-dependency property
 // holds. The specific rules each measure comes from are noted inline.
 
+// Over HTTPS the session cookie is __Host-skilltree_session, and only that
+// name is accepted there. The prefix makes the browser refuse the cookie
+// unless it was set Secure, from a secure page, with Path=/ and no Domain —
+// so a sibling subdomain, or anyone on the network while the site is loaded
+// over plain http, cannot plant a session cookie of their choosing (session
+// fixation by cookie tossing). Reading the plain name as well would reopen
+// exactly that door, which is why it is ignored on a secure request. Plain
+// http (localhost development) can't carry the prefix and keeps the old name.
 const SESSION_COOKIE = 'skilltree_session';
+const SECURE_SESSION_COOKIE = '__Host-skilltree_session';
 
 // NIST 800-63B 5.1.1.2: at least 8 characters, and accept long ones. The upper
 // bound only exists so a huge body can't be turned into expensive hashing.
@@ -183,7 +193,20 @@ async function hashPassword(password) {
   return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64')}$${hash.toString('base64')}`;
 }
 
+// An account made through another provider has no password, and stores this
+// in users.password_hash. A sentinel rather than NULL because the column is
+// NOT NULL, and relaxing that in SQLite means rebuilding the table — the one
+// migration this schema makes dangerous: sessions and trees both reference
+// users, and with foreign keys on, DROP TABLE users deletes every session
+// through ON DELETE CASCADE (and fails on trees). An empty string is never a
+// valid scrypt record, so passwordMatches() refuses it on its own; the login
+// route still spends a hash on it, for the same reason it does for unknown
+// usernames.
+const NO_PASSWORD = '';
+const hasPassword = (row) => typeof row.password_hash === 'string' && row.password_hash !== NO_PASSWORD;
+
 async function passwordMatches(password, stored) {
+  if (stored === NO_PASSWORD) return false;
   const parts = String(stored).split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
   const [, N, r, p, saltB64, hashB64] = parts;
@@ -347,18 +370,28 @@ function isSecureRequest(req) {
   return proto === 'https';
 }
 
+function sessionCookieName(req) {
+  return isSecureRequest(req) ? SECURE_SESSION_COOKIE : SESSION_COOKIE;
+}
+
+// The session token this request carries under the name its scheme allows.
+function sessionToken(req) {
+  return parseCookies(req)[sessionCookieName(req)] || null;
+}
+
 // HttpOnly so page scripts can't read it; Lax so it rides along with ordinary
 // navigation but not with cross-site form posts, which is the CSRF vector;
 // Secure whenever the connection can carry it (plain http on localhost can't).
+// Path=/ and no Domain are what the __Host- prefix requires.
 function sessionCookie(token, req) {
   const flags = ['HttpOnly', 'SameSite=Lax', 'Path=/'];
   if (isSecureRequest(req)) flags.push('Secure');
   const maxAge = token ? Math.floor(SESSION_ABSOLUTE_MS / 1000) : 0;
-  return `${SESSION_COOKIE}=${token || ''}; ${flags.join('; ')}; Max-Age=${maxAge}`;
+  return `${sessionCookieName(req)}=${token || ''}; ${flags.join('; ')}; Max-Age=${maxAge}`;
 }
 
 function currentUser(req) {
-  const token = parseCookies(req)[SESSION_COOKIE];
+  const token = sessionToken(req);
   if (!token) return null;
 
   const row = db
@@ -393,6 +426,10 @@ function purgeExpiredSessions() {
   db.prepare(
     `DELETE FROM rate_limits WHERE first_at <= datetime('now', ?)`
   ).run(`-${THROTTLE_WINDOW_SEC} seconds`);
+
+  // Sign-ins sent to a provider that never came back. The callback refuses
+  // them anyway once expired; this only keeps the table from growing.
+  db.prepare(`DELETE FROM oauth_flows WHERE expires_at <= datetime('now')`).run();
 }
 
 // Answers "may this request change this tree?", replying to the client itself
@@ -553,9 +590,13 @@ route('POST', '/api/auth/login', async (req, res) => {
   // An unknown username still pays for a hash. Returning early would make a
   // wrong-username reply noticeably faster than a wrong-password one, which
   // tells an attacker which accounts exist however careful the wording is.
-  const ok = user
-    ? await passwordMatches(password, user.password_hash)
-    : (await derive(password, DUMMY_SALT, SCRYPT.keyLen, SCRYPT), false);
+  // An account with no password (made through GitHub, say) pays too, and
+  // gets the same reply: otherwise the timing would say which accounts have
+  // no password to guess, and the wording which ones exist.
+  const ok =
+    user && hasPassword(user)
+      ? await passwordMatches(password, user.password_hash)
+      : (await derive(password, DUMMY_SALT, SCRYPT.keyLen, SCRYPT), false);
 
   if (!ok) {
     // Already counted above; nothing to add here.
@@ -584,14 +625,439 @@ route('POST', '/api/auth/login', async (req, res) => {
 
 route('POST', '/api/auth/logout', async (req, res) => {
   const user = currentUser(req);
-  const token = parseCookies(req)[SESSION_COOKIE];
+  const token = sessionToken(req);
   if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
   console.log(`[AUTH] logout user=${user ? user.username : 'unknown'} ip=${clientIp(req)}`);
-  sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(null, req) });
+  sendJson(res, 200, { ok: true }, {
+    'Set-Cookie': sessionCookie(null, req),
+    // W3C Clear Site Data: the browser drops this site's cookies as well as
+    // the one named above — including a plain-named session cookie left over
+    // from before the __Host- rename, and the flow cookie of a sign-in that
+    // was never finished. "cookies" and nothing more: "storage" would also
+    // wipe the tree the viewer keeps in sessionStorage, "cache" would throw
+    // away every file for no gain, and "executionContexts" reloads every open
+    // tab of the site — none of which signing out needs. Browsers act on it
+    // only over HTTPS (and localhost); the Set-Cookie above still works
+    // everywhere. It covers the whole registrable domain, so a deployment on
+    // a subdomain of a domain shared with other apps should drop it.
+    'Clear-Site-Data': '"cookies"',
+  });
 });
 
 route('GET', '/api/auth/me', async (req, res) => {
-  sendJson(res, 200, { user: currentUser(req) });
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 200, { user: null });
+  // Whether a password is set, so the account page can say so; accounts made
+  // through another provider have none until one is added.
+  const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id);
+  sendJson(res, 200, { user: { ...user, has_password: hasPassword(row) } });
+});
+
+// ---------- sign-in through another provider (OAuth 2.0 / OpenID Connect) ----------
+//
+// "Continue with GitHub / Google / your SSO". This site is the client (the
+// relying party); lib/oauth.js talks to the providers and this section owns
+// what the browser and the database see: the flow state, the cookie binding
+// a flow to the browser that started it, and which account an identity
+// signs in to. Written against RFC 9700 (the OAuth 2.0 Security BCP) and the
+// OAuth 2.1 draft, RFC 7636 (PKCE), RFC 9207 (iss), and OpenID Connect Core.
+//
+//   POST /api/auth/oauth/:provider/start     -> { authorization_url }
+//   GET  /api/auth/oauth/:provider/callback  <- the provider sends the browser back here
+//
+// Start is a POST with a JSON body, not a link or a form, on purpose. A GET
+// start would be a CSRF target the Origin check never sees: any page could
+// start a "link" flow for a signed-in visitor. And a form that posts here and
+// is answered with a redirect to github.com is blocked by CSP form-action
+// 'self', which current browsers enforce across the redirect. So the page
+// fetch()es the start and then navigates to the URL it gets back.
+
+const OAUTH = oauth.configureProviders(process.env);
+
+const OAUTH_FLOW_TTL_SEC = 10 * 60;
+// A ceiling on unfinished sign-ins across every address. The per-address
+// throttle rations one caller; this bounds what many addresses at once (one
+// IPv6 prefix holds billions) can make the table hold.
+const MAX_PENDING_OAUTH_FLOWS = 5000;
+
+// The cookie that binds a flow to the browser that started it. Without it, a
+// callback URL is a bearer credential: an attacker who starts a sign-in with
+// their own account at the provider, stops before the last redirect and gets
+// someone else's browser to open the callback URL, signs that person in as
+// the attacker (login CSRF, RFC 9700 §4.7) — and whatever they then make is
+// the attacker's to read. SameSite=Lax, not Strict: the callback is a
+// cross-site top-level navigation from the provider, and a Strict cookie is
+// not sent with it. __Host- over HTTPS for the same reason as the session.
+const OAUTH_FLOW_COOKIE = 'skilltree_oauth';
+
+function flowCookieName(req) {
+  return isSecureRequest(req) ? `__Host-${OAUTH_FLOW_COOKIE}` : OAUTH_FLOW_COOKIE;
+}
+
+function flowCookie(value, req) {
+  const flags = ['HttpOnly', 'SameSite=Lax', 'Path=/'];
+  if (isSecureRequest(req)) flags.push('Secure');
+  return `${flowCookieName(req)}=${value || ''}; ${flags.join('; ')}; Max-Age=${value ? OAUTH_FLOW_TTL_SEC : 0}`;
+}
+
+// A 303 See Other, for the callback. Its own small helper rather than a
+// change to sendJson: this is the one route that answers with a navigation.
+// no-store because the response sets a session cookie; the Referrer-Policy
+// in securityHeaders() is what keeps the code and state in the callback URL
+// out of the Referer of wherever the browser goes next (RFC 9700 §4.2.4).
+function redirectTo(res, location, cookies = []) {
+  res.writeHead(303, {
+    Location: location,
+    'Cache-Control': 'no-store',
+    'Content-Length': 0,
+    ...securityHeaders(),
+    ...(cookies.length ? { 'Set-Cookie': cookies } : {}),
+  });
+  res.end();
+}
+
+// Where a sign-in may send someone afterwards: a path on this site, decided
+// by resolving it rather than by pattern — the same rule as sameSitePath() in
+// app.js, and checked again here because the browser's copy is only a
+// convenience. A control character is refused outright (browsers strip tab
+// and newline *after* any check, which is how "/\t/evil.example" becomes
+// protocol-relative), as is anything starting "//" or "/\" .
+function safeNextPath(next, fallback) {
+  if (typeof next !== 'string' || next === '' || next.length > 2048) return fallback;
+  if (hasControlChars(next)) return fallback;
+  if (next[0] !== '/' || next[1] === '/' || next[1] === '\\') return fallback;
+  const base = 'http://same-origin.invalid';
+  let url;
+  try {
+    url = new URL(next, base);
+  } catch {
+    return fallback;
+  }
+  if (url.origin !== base) return fallback;
+  return url.pathname + url.search + url.hash;
+}
+
+// How many independent ways this account can still sign in, leaving out the
+// identity `excludingIdentityId` when given. Removing a method is refused
+// when this would reach zero. Only identities whose provider is configured
+// right now count: one the operator has since switched off is not a way in.
+// Passkeys, when they land, are one more term in this sum.
+function signInMethodCount(userId, { excludingIdentityId = null } = {}) {
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+  if (!user) return 0;
+  let count = hasPassword(user) ? 1 : 0;
+  const identities = db
+    .prepare('SELECT id, issuer FROM user_identities WHERE user_id = ?')
+    .all(userId);
+  const liveIssuers = new Set([...OAUTH.providers.values()].map((p) => p.issuer));
+  for (const identity of identities) {
+    if (identity.id !== excludingIdentityId && liveIssuers.has(identity.issuer)) count++;
+  }
+  return count;
+}
+
+// A username for an account made through a provider: its login, preferred
+// username or email local part, reduced to what signup accepts
+// (^[a-zA-Z0-9_-]{3,40}$) and made unique — case-insensitively, since the
+// column is NOCASE — with -2, -3, ... Synchronous from the check to the
+// INSERT that follows it, so two sign-ins can't pick the same name between.
+function usernameFor(hint) {
+  let base = String(hint || '');
+  const at = base.indexOf('@');
+  if (at > 0) base = base.slice(0, at);
+  base = base
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+    // Leaves room for a "-999" suffix inside the 40-character limit.
+    .slice(0, 36);
+  if (base.length < 3) base = base ? `user-${base}` : 'user';
+
+  const taken = db.prepare('SELECT 1 FROM users WHERE username = ?');
+  if (!taken.get(base)) return base;
+  for (let n = 2; n < 1000; n++) {
+    if (!taken.get(`${base}-${n}`)) return `${base}-${n}`;
+  }
+  return `${base.slice(0, 33)}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+route('GET', '/api/auth/providers', async (req, res) => {
+  // toJSON() on a provider is { id, name }: no client id, no secret.
+  sendJson(res, 200, [...OAUTH.providers.values()]);
+});
+
+route('POST', '/api/auth/oauth/:provider/start', async (req, res, params) => {
+  const provider = OAUTH.providers.get(params.provider);
+  if (!provider) return sendJson(res, 404, { error: 'That sign-in provider is not available.' });
+
+  // Each start writes a row for an unauthenticated caller, so it is rationed
+  // per address, counted before any work. A sign-in that completes gives its
+  // count back (see the callback), the way a successful password login does.
+  if (overLimit(`oauth-start:${clientIp(req)}`)) {
+    console.log(`[AUTH] oauth start throttled provider=${provider.id} ip=${clientIp(req)}`);
+    return sendJson(res, 429, { error: 'Too many attempts. Try again in a few minutes.' });
+  }
+
+  const body = await readBody(req);
+  const intent = body.intent === undefined ? 'login' : body.intent;
+  if (intent !== 'login' && intent !== 'link') {
+    return sendJson(res, 400, { error: 'intent must be "login" or "link".' });
+  }
+
+  // Linking attaches whatever account the provider returns to the account
+  // signed in *now*, so it is only offered to someone signed in, and the
+  // callback insists the same account is still signed in when it finishes.
+  // A login flow never links, whoever is signed in: auto-linking there would
+  // let an attacker who can complete a flow in someone's browser attach
+  // their own provider account to that person's account and sign in as them.
+  let linkUserId = null;
+  if (intent === 'link') {
+    const user = currentUser(req);
+    if (!user) return sendJson(res, 401, { error: 'Sign in first to connect another account.' });
+    linkUserId = user.id;
+  }
+  const nextPath = safeNextPath(body.next, intent === 'link' ? '/account.html' : '/#browse');
+
+  const pending = db
+    .prepare(`SELECT COUNT(*) AS n FROM oauth_flows WHERE expires_at > datetime('now')`)
+    .get().n;
+  if (pending >= MAX_PENDING_OAUTH_FLOWS) {
+    console.log(`[AUTH] oauth start refused: ${pending} flows pending ip=${clientIp(req)}`);
+    return sendJson(res, 503, { error: 'Sign-in is busy. Please try again in a moment.' });
+  }
+
+  const state = oauth.randomToken();
+  const browser = oauth.randomToken();
+  const verifier = oauth.randomToken();
+  const nonce = provider.kind === 'oidc' ? oauth.randomToken() : null;
+
+  let authorizationUrl;
+  try {
+    authorizationUrl = await provider.authorizationUrl({
+      state,
+      codeChallenge: oauth.pkceChallenge(verifier),
+      nonce,
+    });
+  } catch (e) {
+    console.log(`[AUTH] oauth start failed provider=${provider.id} reason="${logSafe(e.message, 200)}"`);
+    return sendJson(res, 503, { error: `Signing in with ${provider.name} is not available right now.` });
+  }
+
+  db.prepare(
+    `INSERT INTO oauth_flows
+       (state_hash, browser_hash, provider, code_verifier, nonce, intent, next_path, link_user_id, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', ?))`
+  ).run(
+    hashToken(state),
+    hashToken(browser),
+    provider.id,
+    verifier,
+    nonce,
+    intent,
+    nextPath,
+    linkUserId,
+    `+${OAUTH_FLOW_TTL_SEC} seconds`
+  );
+
+  sendJson(
+    res,
+    200,
+    { authorization_url: authorizationUrl },
+    { 'Set-Cookie': flowCookie(browser, req), 'Cache-Control': 'no-store' }
+  );
+});
+
+route('GET', '/api/auth/oauth/:provider/callback', async (req, res, params) => {
+  const query = new URLSearchParams(req.url.split('?')[1] || '');
+  const clearFlow = flowCookie(null, req);
+  const providerId = logSafe(params.provider, 20);
+  let flow = null;
+
+  // Every failure ends on the account page with one of a few fixed codes.
+  // What actually went wrong goes to the log; nothing the provider sent is
+  // ever reflected into the page.
+  const fail = (code, reason) => {
+    console.log(`[AUTH] oauth refused provider=${providerId} reason="${logSafe(reason, 200)}" ip=${clientIp(req)}`);
+    let location = `/account.html?oauth_error=${encodeURIComponent(code)}`;
+    if (flow && flow.intent === 'login') location += `&next=${encodeURIComponent(flow.next_path)}`;
+    redirectTo(res, location, [clearFlow]);
+  };
+
+  const provider = OAUTH.providers.get(params.provider);
+  if (!provider) return fail('unavailable', 'provider not configured');
+
+  const state = query.get('state');
+  if (!state || state.length > 512) return fail('expired', 'no state');
+
+  // Single use: the row is taken out in the same statement that finds it, so
+  // a replayed callback — or two arriving at once — finds nothing.
+  flow = db
+    .prepare(
+      `DELETE FROM oauth_flows WHERE state_hash = ?
+       RETURNING *, expires_at > datetime('now') AS live`
+    )
+    .get(hashToken(state));
+  if (!flow) return fail('expired', 'unknown, used or tampered state');
+  if (!flow.live) return fail('expired', 'flow expired');
+
+  // Bound to the browser that started it: this is what stops login CSRF.
+  const binding = parseCookies(req)[flowCookieName(req)];
+  if (!binding || !oauth.safeEqual(hashToken(binding), flow.browser_hash)) {
+    return fail('expired', 'flow cookie missing or from another browser');
+  }
+
+  // Each provider has its own callback path, and a flow started for one is
+  // refused at another's. That separation is RFC 9700 §4.4.2's defence
+  // against mix-up for providers that don't send `iss`, GitHub among them.
+  if (flow.provider !== provider.id) return fail('failed', 'flow belongs to another provider');
+
+  let meta;
+  try {
+    meta = await provider.metadata();
+  } catch (e) {
+    return fail('unavailable', e.message);
+  }
+
+  // RFC 9207: a provider that says it sends `iss` must send it, and whatever
+  // `iss` arrives must be exactly the issuer this flow was sent to.
+  const iss = query.get('iss');
+  if (iss === null && meta.issParameterSupported) return fail('failed', 'iss missing');
+  if (iss !== null && iss !== provider.issuer) return fail('failed', 'iss does not match the provider');
+
+  const providerError = query.get('error');
+  if (providerError !== null) {
+    return fail(
+      providerError === 'access_denied' ? 'cancelled' : 'failed',
+      `provider returned error ${providerError.slice(0, 40)}`
+    );
+  }
+  const code = query.get('code');
+  if (!code || code.length > 2048) return fail('failed', 'no code');
+
+  // The access token lives only inside this block: used for the profile
+  // where the provider needs it (GitHub), then dropped. Nothing a provider
+  // issues is stored.
+  let identity;
+  try {
+    const tokens = await provider.exchangeCode(code, flow.code_verifier);
+    identity = await provider.identify(tokens, { nonce: flow.nonce });
+  } catch (e) {
+    return fail(e instanceof oauth.OAuthError ? e.code : 'failed', e.message);
+  }
+
+  const displayName = cleanLine(identity.displayName, 120);
+  const linked = db
+    .prepare('SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ?')
+    .get(identity.issuer, identity.subject);
+
+  // The start's throttle count is given back once a flow completes.
+  const giveBackStart = () => undoAttempt(`oauth-start:${clientIp(req)}`);
+
+  if (flow.intent === 'link') {
+    const user = currentUser(req);
+    if (!user || user.id !== flow.link_user_id) {
+      return fail('link_session', 'the account that started linking is no longer signed in');
+    }
+    if (linked && linked.user_id !== user.id) {
+      return fail('identity_taken', `identity already belongs to user id=${linked.user_id}`);
+    }
+    if (linked) {
+      db.prepare('UPDATE user_identities SET display_name = ? WHERE id = ?').run(displayName, linked.id);
+    } else {
+      db.prepare(
+        `INSERT INTO user_identities (user_id, provider, issuer, subject, display_name)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(user.id, provider.id, identity.issuer, identity.subject, displayName);
+    }
+    giveBackStart();
+    console.log(`[AUTH] oauth linked provider=${provider.id} user=${user.username} id=${user.id} ip=${clientIp(req)}`);
+    return redirectTo(res, flow.next_path, [clearFlow]);
+  }
+
+  // Signing in. A known identity is that account. An unknown one is a new
+  // account — never an existing account that happens to share an email.
+  let userId;
+  let username;
+  if (linked) {
+    userId = linked.user_id;
+    username = db.prepare('SELECT username FROM users WHERE id = ?').get(userId).username;
+    db.prepare('UPDATE user_identities SET display_name = ? WHERE id = ?').run(displayName, linked.id);
+  } else {
+    username = usernameFor(identity.usernameHint);
+    db.exec('BEGIN');
+    try {
+      userId = db
+        .prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)')
+        .run(username, NO_PASSWORD).lastInsertRowid;
+      db.prepare(
+        `INSERT INTO user_identities (user_id, provider, issuer, subject, display_name)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(userId, provider.id, identity.issuer, identity.subject, displayName);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    console.log(`[AUTH] oauth signup provider=${provider.id} user=${logSafe(username)} id=${userId} ip=${clientIp(req)}`);
+  }
+
+  // A fresh session, exactly as a password login makes one — and the session
+  // this browser had before, if any, is ended rather than left behind.
+  const previous = sessionToken(req);
+  if (previous) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(previous));
+  const token = startSession(userId);
+  giveBackStart();
+  console.log(`[AUTH] oauth login success provider=${provider.id} user=${logSafe(username)} id=${userId} ip=${clientIp(req)}`);
+  redirectTo(res, flow.next_path, [sessionCookie(token, req), clearFlow]);
+});
+
+route('GET', '/api/auth/identities', async (req, res) => {
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to see your account.' });
+  const rows = db
+    .prepare(
+      `SELECT id, provider, issuer, display_name, created_at FROM user_identities
+        WHERE user_id = ? ORDER BY id`
+    )
+    .all(user.id);
+  sendJson(
+    res,
+    200,
+    rows.map(({ issuer, ...row }) => {
+      const provider = OAUTH.providers.get(row.provider);
+      return {
+        ...row,
+        provider_name: provider ? provider.name : row.provider,
+        // Usable to sign in with right now: the provider is configured and
+        // still the same issuer. The same rule signInMethodCount() counts by.
+        enabled: !!provider && provider.issuer === issuer,
+      };
+    })
+  );
+});
+
+route('DELETE', '/api/auth/identities/:id', async (req, res, params) => {
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to change your account.' });
+  const identityId = parseId(params.id);
+  // Someone else's identity answers exactly like one that doesn't exist.
+  const identity = identityId
+    ? db.prepare('SELECT id, provider FROM user_identities WHERE id = ? AND user_id = ?').get(identityId, user.id)
+    : null;
+  if (!identity) return sendJson(res, 404, { error: 'No such connected account.' });
+
+  // node:sqlite is synchronous and nothing here awaits, so the count and the
+  // delete can't be split by another request removing a method in between.
+  if (signInMethodCount(user.id, { excludingIdentityId: identity.id }) < 1) {
+    return sendJson(res, 409, {
+      error: 'This is the only way you can sign in. Add another one before disconnecting it.',
+    });
+  }
+  db.prepare('DELETE FROM user_identities WHERE id = ?').run(identity.id);
+  console.log(`[AUTH] oauth unlinked provider=${identity.provider} user=${user.username} id=${user.id} ip=${clientIp(req)}`);
+  sendJson(res, 200, { ok: true });
 });
 
 route('GET', '/api/trees', async (req, res) => {
@@ -1049,6 +1515,18 @@ process.on('uncaughtException', (err) => {
 
 purgeExpiredSessions();
 setInterval(purgeExpiredSessions, 60 * 60 * 1000).unref();
+
+// Which providers are on, and why any that were asked for are not. Never the
+// secrets: only names, and the callback URL each provider needs registered.
+for (const note of OAUTH.notes) console.log(`[AUTH] ${logSafe(note, 300)}`);
+// Fetch each discovery document now, so a mistyped issuer shows up in the
+// startup log rather than on someone's first click. Not awaited: a slow
+// provider must not hold up the server, and the first sign-in retries anyway.
+for (const provider of OAUTH.providers.values()) {
+  provider.metadata().catch((e) => {
+    console.warn(`[AUTH] ${provider.name} is not reachable yet: ${logSafe(e.message, 300)}`);
+  });
+}
 
 server.listen(PORT, () => {
   // The real port, not PORT: with PORT=0 the OS picks one, and the test
