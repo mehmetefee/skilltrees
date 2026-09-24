@@ -21,6 +21,13 @@ real reason; the zero-dependency property is worth keeping.
 The server reads frontend files from disk per request, so changes to
 `frontend/` only need a browser refresh. Changes to `backend/` need a restart.
 
+Settings come from the environment, all optional — `.env.example` lists and
+explains every one (`PUBLIC_ORIGIN`, and the GitHub / Google / OIDC sign-in
+providers). Copy it to `.env` (git ignores it) and use Node's own loader, no
+package: `node --env-file=../.env server.js`. With nothing set the site runs
+with password accounts only, and the startup log says which providers are
+on and what any half-configured one is missing.
+
 ## Layout
 
 ```
@@ -31,13 +38,20 @@ backend/
   db/feature.js    CLI: set/clear the homepage-featured tree (server-side only)
   lib/notation.js  database <-> portable JSON conversion
   lib/text.js      control characters in text that gets printed
+  lib/oauth.js     sign-in through GitHub/Google/OIDC: talks to providers
+                   (discovery, PKCE, token exchange, ID-token checks, JWKS)
 frontend/
   fonts/               Inter, self-hosted (see "web fonts" below)
   index.html/app.js    browse + search + import, featured-tree hero
+  account.html         sign in / sign up, and the signed-in "Your account"
+                       panel (its code is the account section of app.js)
   tree.html/tree.js    the graph view, and where trees are created:
                        render, edit, title/description, zoom/pan, export
   layout.js            automatic graph layout — SHARED WITH THE BACKEND
 tools/validate-tree.js  format validator (CLI + module)
+tests/api/              API suites (node:test, no dependencies)
+tests/helpers/          test server launcher, mock OIDC provider
+.env.example            every environment setting, documented
 examples/               sample trees in the portable format
 FORMAT.md               the JSON format spec — read this before touching import/export
 TODO.md                 deferred ideas, and decisions made against things
@@ -189,8 +203,21 @@ V3 session management, V4 access control) and **NIST SP 800-63B**, using only
 - **Sessions** (ASVS V3): 256-bit token, stored only as its SHA-256 so a leaked
   database yields no usable cookies; absolute expiry (30 days) and idle expiry
   (14 days); a fresh token on every login; logout deletes the row server-side.
-- **Cookie** (ASVS V3.4): HttpOnly, SameSite=Lax, Path=/, and Secure whenever
-  the request arrives over HTTPS.
+- **Cookie** (ASVS V3.4): HttpOnly, SameSite=Lax, Path=/. Over HTTPS it is
+  `__Host-skilltree_session`, with Secure, and **only that name is accepted
+  there**: the prefix makes the browser refuse a cookie that wasn't set
+  Secure, from a secure page, for Path=/ with no Domain, so a sibling
+  subdomain or a moment of plain http can't plant a session of its choosing
+  (fixation by cookie tossing). Plain http (localhost) keeps
+  `skilltree_session`. The rename signed out every existing HTTPS session
+  once; their old cookies are ignored and expire on their own.
+- **Logout** deletes the session row and sends `Clear-Site-Data: "cookies"`
+  (W3C Clear Site Data), which also removes a leftover plain-named cookie and
+  an unfinished sign-in's flow cookie. Cookies only — `"storage"` would wipe
+  the viewer's sessionStorage, `"cache"` every file, and
+  `"executionContexts"` reloads every open tab. It applies to the whole
+  registrable domain, so drop it if the site ever shares a domain with other
+  apps.
 - **Brute force and enumeration** (ASVS V2.2.1): failed logins are throttled per
   address *and* per account. Login failures say "wrong username or password"
   without saying which — and an unknown username still pays for a hash, because
@@ -262,6 +289,92 @@ V3 session management, V4 access control) and **NIST SP 800-63B**, using only
   where an escape sequence rewrites what a person sees. `logSafe()` still
   neutralizes at the sink, for rows written before this existed.
 
+### Signing in through GitHub, Google or an OIDC provider
+
+"Continue with ..." is OAuth 2.0 (GitHub) or OpenID Connect (Google, and any
+provider at `OIDC_ISSUER`), with this site as the client. `lib/oauth.js`
+talks to providers; the routes, flow state and accounts live in `server.js`
+beside the password routes. Configured only by environment (`.env.example`):
+with nothing set there are no buttons and the routes answer 404. Written
+against RFC 9700 (OAuth 2.0 Security BCP), the OAuth 2.1 draft, RFC 7636
+(PKCE), RFC 9207 (`iss`), OpenID Connect Core and Discovery. The measures,
+and the rule each one exists for:
+
+- **Authorization code with PKCE, and nothing else** (RFC 9700 §2.1.1,
+  OAuth 2.1): S256 always — GitHub included, which doesn't demand it — never
+  `plain`, and a provider whose metadata leaves S256 out isn't switched on.
+- **`redirect_uri` is built from `PUBLIC_ORIGIN`, never the Host header.**
+  Host is whatever the requester says, so building from it would let them
+  choose where the provider delivers the code. No `PUBLIC_ORIGIN`, no
+  providers. It must be https (http for localhost only).
+- **Start is a same-origin `POST` that returns a URL**, which the page then
+  navigates to. A GET start would be a CSRF target the Origin check never
+  sees (a "link" flow started for a signed-in visitor by any page), and a
+  form answered with a redirect off-site is blocked by CSP `form-action
+  'self'` in current browsers.
+- **Flow state is server-side**, in `oauth_flows`: state and the browser
+  binding as SHA-256 only (like session tokens), the PKCE verifier, the
+  nonce, the validated `next`, and for linking the account that asked. Ten
+  minutes, **single use**: the row is deleted by the statement that finds it,
+  before any token exchange, so a replayed callback finds nothing.
+- **Bound to the browser that started it** by an HttpOnly cookie
+  (`skilltree_oauth`; `__Host-` over HTTPS) whose hash the flow must match.
+  This is what stops login CSRF (RFC 9700 §4.7): without it, an attacker's
+  callback URL opened in someone else's browser signs them in *as the
+  attacker*, and whatever they make is the attacker's. SameSite=Lax, not
+  Strict: the callback is a cross-site navigation from the provider, which
+  a Strict cookie doesn't ride along with.
+- **Mix-up** (RFC 9700 §4.4): each provider has its own callback path, and a
+  flow is refused at another's. `iss` on the callback must equal the issuer
+  exactly, and is *required* from a provider whose metadata says it sends it
+  (RFC 9207 — Google does; GitHub doesn't, and relies on the path).
+- **ID tokens are verified**, with node:crypto against the provider's JWKS
+  (cached by `kid`; an unknown `kid` refetches at most once per 30 s, so
+  made-up kids can't turn callbacks into requests to the provider). Only
+  RS256, PS256, ES256 and EdDSA, and the key's type must fit the algorithm —
+  `none` and every HS* are refused, HS256 keyed with the *public* key being
+  the classic forgery. Then OIDC Core §3.1.3.7: `iss` exact, `aud` includes
+  the client (and `azp` names it when there are several), `exp`/`iat`/`nbf`
+  within 60 s of skew, `nonce` equal to the flow's in constant time. Google
+  is the one provider allowed an alias for its `iss`, as its docs require.
+- **Identity is (issuer, subject)**, never email and never a GitHub login —
+  `user_identities` is unique on that pair (OIDC Core §5.7). An address can
+  be unverified or re-registered, and a login renamed and claimed by someone
+  else; matching on either hands the account to whoever holds it next. So an
+  unknown identity **never auto-links**: it makes a new account, named from
+  the login / preferred_username / email local part, cut to the signup
+  pattern and made unique with `-2`, `-3`, ...
+- **Linking is explicit**: `intent: "link"` needs a session when it starts
+  and the same account still signed in when it comes back, and an identity
+  that belongs to another account is refused. A login flow never links,
+  whoever is signed in — otherwise anyone able to finish a flow in your
+  browser could attach their provider account to yours and sign in as you.
+- **The last way in can't be removed.** `signInMethodCount()` — a password,
+  plus identities whose provider is configured *now* under the same issuer —
+  must stay at least one after a disconnect. Passkeys will be one more term.
+- **An account with no password** stores `''` (`NO_PASSWORD`) in
+  `users.password_hash`. Not NULL: the column is NOT NULL, and relaxing that
+  means rebuilding `users` — which, with foreign keys on, deletes every
+  session through ON DELETE CASCADE and fails on trees. `passwordMatches()`
+  refuses `''`, and a password login to such an account still spends a
+  dummy hash, so it reads as a wrong password in wording *and* in timing.
+- **A fresh session** on every provider sign-in, as for a password, and the
+  browser's previous session is deleted. The callback answers 303 with
+  `no-store`; `Referrer-Policy: no-referrer` keeps the code in its URL out of
+  the next page's Referer.
+- **Failures come back as one of six fixed codes** (`?oauth_error=`), shown
+  from a fixed list with `textContent`. What really happened is logged
+  through `logSafe()`; nothing a provider says reaches the page.
+- **Outbound requests** are https only (http on loopback, for the test
+  mock), with a 10 s deadline and a 256 KB cap, follow no redirects, and must
+  be JSON — whose parse errors are never quoted, because a token endpoint's
+  body is exactly what mustn't reach a log. The one access token used
+  (GitHub's `/user`) is dropped straight after; nothing a provider issues is
+  stored, and secrets are neither logged nor sent to the browser.
+- **Rationed**: each start counts against the per-address throttle (given
+  back when the sign-in completes, like a successful login), and unfinished
+  flows are capped at 5000 overall.
+
 Known limits, deliberate for a site this size: the throttle is a table in the
 same SQLite database, so it survives a restart but wouldn't be shared across
 hosts; there is no account-wide guess limit, only per-address and
@@ -273,8 +386,14 @@ common-password
 list is the head of the published lists rather than a full breach corpus;
 `clientIp()` uses the socket address, not `X-Forwarded-For`, which is
 caller-supplied — running behind a proxy needs that handled properly; signup
-reveals whether a username is taken, which it has to in order to be usable; and
-there is no password change, reset or second factor yet.
+reveals whether a username is taken, which it has to in order to be usable;
+there is no password change, reset or second factor yet, so an account made
+through a provider has no way to add a password; a provider sign-in only
+works on the host `PUBLIC_ORIGIN` names, because the flow cookie is set by
+the host the button was clicked on (serve one canonical host); the userinfo
+endpoint is never called, so a provider whose ID token carries no name or
+email yields usernames like `user-2`, and usernames can't be changed; and
+GitHub access tokens are dropped but not revoked — they carry no scopes.
 
 ## Conventions
 
@@ -298,6 +417,15 @@ placement, import/export round-trips, and both layout modes. They live in
 `tests/` if they were copied over; they need `npm install playwright`, which
 breaks the zero-dependency property for the app itself — keep any test
 dependency out of `backend/package.json`.
+
+The API suites in `tests/api/` need nothing installed: `node --test
+"tests/api/*.test.js"`. Each starts its own server on a throwaway database
+(`tests/helpers/server.js`). Provider sign-in is tested against
+`tests/helpers/mock-oidc.js`, a small OIDC provider on 127.0.0.1 with knobs
+to misbehave (wrong iss, nonce, aud, expired, `alg: none`, unknown kid...);
+`tests/oauth-browser.test.js` runs the same flow in Chromium and fails on any
+console error or CSP violation. The start throttle counts every request from
+127.0.0.1, so suites that fail flows on purpose each get their own server.
 
 Worth knowing: two bugs in this project were only caught by clicking through
 a real browser, not by API tests — a modal that invisibly blocked clicks, and

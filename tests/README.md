@@ -37,6 +37,7 @@ CHROMIUM_PATH=/path/to/chrome node tests/core-crud.test.js
 | `skill-placement.test.js` | New skills never overlap, stay on screen, and stay individually clickable. |
 | `zoom-pan.test.js` | Scroll zoom, drag-to-pan, the zoom buttons, and that node dragging still works alongside them. |
 | `drag-not-saved.test.js` | Dragging moves a node visually but never reaches the database. |
+| `oauth-browser.test.js` | "Continue with ..." end to end in Chromium against the mock provider: sign-in, the account panel, connecting and disconnecting, error messages, and no console errors or CSP violations. Starts its own server and provider, so it needs no running server. |
 
 ## A note on what these caught
 
@@ -73,3 +74,13 @@ with `SKILLTREE_DB`. Suites therefore don't need a server running, don't
 touch your working database, and can run in parallel — every one gets fresh
 accounts and fresh rate-limit counters. The helper's `signup(name)` returns a
 client already carrying that account's session cookie.
+
+The OAuth suites (`api/oauth.test.js`, `api/oauth-lib.test.js`) use
+`helpers/mock-oidc.js`: a zero-dependency OpenID Connect provider on
+127.0.0.1 — discovery, an auto-approving `/authorize`, a `/token` that checks
+client authentication, `redirect_uri` and PKCE, RS256 ID tokens, `/jwks`, and
+GitHub-shaped endpoints — with knobs that make it misbehave (wrong `iss`,
+nonce or audience, expired tokens, `alg: none`, unknown `kid`, ...). The
+server throttles sign-in starts per address and every test request comes
+from 127.0.0.1, so suites that fail flows on purpose each start a server of
+their own.
