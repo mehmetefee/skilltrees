@@ -47,6 +47,9 @@ frontend/
                        panel (its code is the account section of app.js)
   tree.html/tree.js    the graph view, and where trees are created:
                        render, edit, title/description, zoom/pan, export
+  viewer.html/viewer.js  view a tree from a file without publishing it
+  a11y.js              dialogs, screen-reader announcer, the graph's keyboard
+                       model — shared by every page that draws a graph
   layout.js            automatic graph layout — SHARED WITH THE BACKEND
 tools/validate-tree.js  format validator (CLI + module)
 tests/api/              API suites (node:test, no dependencies)
@@ -395,6 +398,59 @@ endpoint is never called, so a provider whose ID token carries no name or
 email yields usernames like `user-2`, and usernames can't be changed; and
 GitHub access tokens are dropped but not revoked — they carry no scopes.
 
+## Accessibility
+
+The frontend targets **WCAG 2.2 AA**. Checked with axe-core (zero violations
+on `/`, a tree page, a draft, the viewer — including with the panel, the
+dialogs and the search list open), Chromium's forced-colours emulation, and
+`tests/a11y-keyboard.test.js`, which drives all of the below by keyboard.
+
+- **The graph by keyboard** (`createGraphKeyboard()` in `a11y.js`, used by
+  `tree.js`, `viewer.js` and the hero in `app.js`). The canvas is one tab
+  stop: arrows pan, `+`/`-` zoom, `0` fits — the keyboard alternative to
+  dragging (2.5.7). The skills are one more, a roving tabindex: ←/→ follow a
+  link to a prerequisite / an unlock, ↑/↓ step through every skill column by
+  column, Home/End, Enter/Space does what a click does (details; a choice in
+  link mode; opening the tree in the hero, where skills are links). Link mode
+  and removing a link (the × beside each link in the panel) work without a
+  mouse. A hint listing the keys appears while the graph has keyboard focus.
+- **Dialogs are native `<dialog>`s** opened with `showModal()`, through
+  `setupModalDialog()`: top layer, inert page, Escape, focus in and back to
+  the opener, backdrop click via `closedby="any"` with a script fallback.
+- **The side panel** is an `<aside>` labelled by its heading. Opening moves
+  focus to that heading; Escape or × returns it to the skill. Results (link
+  added or removed, skill deleted) are read out through the toast, which is
+  `role="status"`; link mode's steps through `announce()`.
+- **The homepage search** is an ARIA 1.2 combobox inside `<search>`.
+- Also: a skip link on every page, one `<main>`, forced-colours styles, cross-
+  document view transitions (off under reduced motion), and a Share button
+  (`navigator.share`, falling back to the clipboard) on saved trees.
+
+Things here that will look wrong but aren't:
+
+- **Only one skill has `tabindex="0"`.** The rest are `-1` on purpose (roving
+  tabindex), or a 1000-skill tree would take a thousand Tabs to get past.
+- **`render()` notes the focused skill before emptying the layer** and
+  `graphKeys.sync()` puts focus back afterwards. Every render rebuilds the
+  nodes; without this, focus fell to `<body>` on every click and drag frame.
+- **The homepage and tree page have visually hidden `<h1>`s.** On the
+  homepage the featured tree's name comes first on screen but is a section
+  heading; on the tree page the title is an `<input>`, not a heading.
+- **The dialogs keep their old `*-overlay` ids** (`#import-overlay`,
+  `#export-overlay`, `#skill-modal-overlay`, `#viewer-empty`) so selectors
+  kept working. They're open when they have `[open]`, not when they lack
+  `[hidden]`.
+- **The closed side panel is `visibility: hidden`**, not just slid off screen:
+  off screen alone, its buttons stayed in the tab order.
+- **`#browse` has a negative `scroll-margin-top`** that cancels the page's
+  `scroll-padding-top`. The padding keeps focused cards out from under the
+  fixed header (2.4.11); the margin keeps `/#browse` landing where it did.
+- **Skills off a highlighted path fade to 0.25, but their labels only to
+  0.6** — enough to stay at 4.5:1. `--unlocks` replaced `#10b981` for the same
+  reason (non-text contrast, 3:1).
+- **The toast jumps to the top edge** when the bottom spot would cover the
+  focused element (2.4.11).
+
 ## Conventions
 
 - Skills reference each other by slug (`knead-dough`), never by database id,
@@ -416,7 +472,9 @@ covering: core CRUD, cycle rejection, zoom/pan, drag-not-persisting, new-skill
 placement, import/export round-trips, and both layout modes. They live in
 `tests/` if they were copied over; they need `npm install playwright`, which
 breaks the zero-dependency property for the app itself — keep any test
-dependency out of `backend/package.json`.
+dependency out of `backend/package.json`. `tests/a11y-keyboard.test.js`
+covers the keyboard and screen-reader behaviour, and starts its own server on
+a throwaway database (see `tests/README.md`).
 
 The API suites in `tests/api/` need nothing installed: `node --test
 "tests/api/*.test.js"`. Each starts its own server on a throwaway database

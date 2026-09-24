@@ -3,6 +3,11 @@
 Browser-level tests that drive the real UI with Playwright, plus one pure
 unit suite for the format validator.
 
+The modals are native `<dialog>` elements. A suite waiting for one to open
+should wait for `#import-overlay[open]` (or `#export-overlay[open]`), not
+`:not([hidden])`; waiting for a closed one with `{ state: 'hidden' }` works
+as before.
+
 ## Running them
 
 The app itself has no dependencies, and that's worth preserving — so install
@@ -38,6 +43,26 @@ CHROMIUM_PATH=/path/to/chrome node tests/core-crud.test.js
 | `zoom-pan.test.js` | Scroll zoom, drag-to-pan, the zoom buttons, and that node dragging still works alongside them. |
 | `drag-not-saved.test.js` | Dragging moves a node visually but never reaches the database. |
 | `oauth-browser.test.js` | "Continue with ..." end to end in Chromium against the mock provider: sign-in, the account panel, connecting and disconnecting, error messages, and no console errors or CSP violations. Starts its own server and provider, so it needs no running server. |
+| `a11y-keyboard.test.js` | Everything by keyboard: skip links, tabbing to a skill and opening it, arrow-key movement, Escape and where focus goes back to, link mode and removing a link, keyboard pan/zoom, native dialogs (and that closed ones block nothing), the search combobox, Share. Starts its own server — see below. |
+
+### The keyboard suite starts its own server
+
+`a11y-keyboard.test.js` signs up through the API, and signups are
+rate-limited per address (ten per fifteen minutes), so a shared server runs
+out after a few runs. It therefore starts a server of its own on a throwaway
+database with `tests/helpers/server.js`, the same way the API suites do — no
+server needs to be running:
+
+```bash
+node tests/a11y-keyboard.test.js
+# Playwright installed globally rather than in the project:
+NODE_PATH=$(npm root -g) node tests/a11y-keyboard.test.js
+```
+
+`BASE_URL=http://localhost:3001` aims it at a running server instead; the
+featured-hero checks are then skipped, since featuring a tree takes a script
+run against the database file (`backend/db/feature.js`). It deletes the trees
+it creates either way.
 
 ## A note on what these caught
 
