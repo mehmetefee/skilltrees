@@ -20,6 +20,23 @@ real reason; the zero-dependency property is worth keeping.
 
 The server reads frontend files from disk per request, so changes to
 `frontend/` only need a browser refresh. Changes to `backend/` need a restart.
+SIGTERM or Ctrl-C shuts it down gracefully: requests already running finish,
+then the database is closed (a second Ctrl-C, or 10 s, cuts that short).
+
+Optional environment:
+
+- `PORT` (default 3001; `0` picks a free one) and `SKILLTREE_DB` (the
+  database file; tests point it at a throwaway one).
+- `PUBLIC_ORIGIN` — the site's external origin, e.g.
+  `https://skilltrees.example`. Accepted as a same-site `Origin` by the CSRF
+  check (behind a proxy that rewrites `Host`, it's what browsers send) and
+  used for security.txt's `Canonical`. Unset is fine.
+- `SECURITY_CONTACT` — turns on `/.well-known/security.txt` (RFC 9116).
+  One or more comma-separated `mailto:`, `https:` or `tel:` URIs (a bare
+  address gets `mailto:`). Unset, the file is a 404: Contact is mandatory,
+  and there is no made-up default.
+- `SECURITY_POLICY` — optional `https://` link to a disclosure policy, added
+  to security.txt as `Policy:`.
 
 Settings come from the environment, all optional — `.env.example` lists and
 explains every one (`PUBLIC_ORIGIN`, and the GitHub / Google / OIDC sign-in
@@ -38,6 +55,7 @@ backend/
   db/feature.js    CLI: set/clear the homepage-featured tree (server-side only)
   lib/notation.js  database <-> portable JSON conversion
   lib/text.js      control characters in text that gets printed
+  lib/http.js      negotiation, ETags, compression, problem details (pure)
   lib/oauth.js     sign-in through GitHub/Google/OIDC: talks to providers
                    (discovery, PKCE, token exchange, ID-token checks, JWKS)
 frontend/
@@ -47,6 +65,9 @@ frontend/
                        panel (its code is the account section of app.js)
   tree.html/tree.js    the graph view, and where trees are created:
                        render, edit, title/description, zoom/pan, export
+  viewer.html/viewer.js  view a tree from a file without publishing it
+  a11y.js              dialogs, screen-reader announcer, the graph's keyboard
+                       model — shared by every page that draws a graph
   layout.js            automatic graph layout — SHARED WITH THE BACKEND
 tools/validate-tree.js  format validator (CLI + module)
 tests/api/              API suites (node:test, no dependencies)
@@ -174,6 +195,54 @@ take the newest hit, which handed the choice to whoever could publish a tree:
 titles are written by anyone with an account, so "<your title> - remastered"
 would win the spotlight the moment an operator typed the real title.
 
+### HTTP
+
+Every response goes through the dispatcher and `sendRepresentation()` in
+`server.js`, with the pure pieces in `lib/http.js`. Headers that belong on
+everything are set there with `res.setHeader` before routing, so a route
+that writes its own response (a redirect, say) still carries them. Add
+behaviour there, not in handlers.
+
+**Scripts and stylesheets are `no-cache`, not `immutable`.** Their names
+don't change when their contents do — `/app.js` is always `/app.js` — so any
+max-age would keep serving the old file after an edit, and "a refresh shows
+it" is the promise above. `no-cache` means stored but revalidated every time;
+the strong ETag (a content hash, memoised per path+mtime+size) turns that
+into a 304 of a few hundred bytes. Only the fonts are `immutable`. To make
+scripts long-lived, fingerprint their names first.
+
+**Errors say the same thing twice, as `detail` and `error`.** They are RFC
+9457 problem details (`application/problem+json`, `type: "about:blank"`,
+`title` = the status phrase), and `detail` is the standard member. `error` is
+the same text kept for every client written before — the frontend reads
+`data.error`, and the import screen reads `problems`, which also stays. Keep
+calling `sendJson(res, status, { error })`; it builds the rest.
+
+**A page's 304 carries the page's CSP.** A browser folds a 304's headers into
+the response it stored, so `serveStatic()` sets the page headers on `res`
+before deciding between 200 and 304. Sending the dispatcher's default (the
+API's `default-src 'none'`) on a page's 304 would make that the page's policy
+on the next load.
+
+**The stylesheet is in the 103 Early Hints but not in the page's `Link`
+header.** Preloading it from the page's own response made Chromium 141 fetch
+it twice and warn that the preload went unused; it's in the first bytes of
+every page anyway. The font, which the browser only discovers after parsing
+the CSS, is in both. Early Hints go only to requests with
+`Sec-Fetch-Dest: document`: plenty of non-browser clients take a 1xx for the
+final response, and Chromium only acts on 103 over HTTP/2 (behind a proxy).
+
+**`bluetooth` and `web-share` are missing from Permissions-Policy.** Chromium
+builds without those APIs (Linux, for one) log "unrecognized feature" on
+every page for them. Check any new token in a real browser's console first.
+`Cross-Origin-Embedder-Policy` is absent on purpose too: nothing here needs
+cross-origin isolation, and it would be a second gate for any future
+cross-origin image.
+
+**HSTS and `upgrade-insecure-requests` only appear over https** (or with
+`X-Forwarded-Proto: https`). RFC 6797 §7.2 forbids HSTS on plain http, and
+upgrading subresources on plain-http localhost would break every page.
+
 ## Accounts and who can edit what
 
 Reading is public: browsing, opening a tree, and exporting need no account.
@@ -224,14 +293,57 @@ V3 session management, V4 access control) and **NIST SP 800-63B**, using only
   returning early would make it measurably faster and give the same answer away
   through timing.
 - **CSRF** (ASVS V4.2.2): SameSite=Lax, plus a state-changing request whose
-  `Origin` is present plays only if it matches the host. A missing `Origin`
-  means a non-browser caller, which carries no ambient cookie.
+  `Origin` is present plays only if it matches the host (or `PUBLIC_ORIGIN`).
+  A missing `Origin` means a non-browser caller, which carries no ambient
+  cookie. Two more layers below: Fetch Metadata, and the JSON-only rule for
+  request bodies.
+- **Fetch Metadata** (W3C, resource isolation): an `/api/` request marked
+  `Sec-Fetch-Site: cross-site` is refused unless it is a top-level GET
+  navigation (`navigate` + `document`) — which is what an OAuth provider
+  sending someone back to a callback is. Other sites can link to the API but
+  not fetch, post to, frame or embed it. No `Sec-Fetch-*` at all (curl, old
+  browsers) passes, as with `Origin`.
+- **Request bodies must be declared `application/json`** (ASVS V13.1.5), or
+  get 415 with `Accept` before the handler runs; a route can name other
+  types with `route(..., { accepts: [...] })`. The only types a cross-site
+  form, or a fetch avoiding a CORS preflight, can send are form-encoded,
+  multipart and `text/plain`, so this shuts out forged posts on its own.
 
 - **Responses** carry `Content-Security-Policy`, `X-Content-Type-Options`,
-  `X-Frame-Options`, `Referrer-Policy` and `Cross-Origin-Opener-Policy`. The
-  CSP allows inline *styles* (several pages use style attributes) but not
-  inline scripts, so injected markup can't execute. Adding an inline `<script>`
-  to a page will now silently do nothing — put it in a `.js` file.
+  `X-Frame-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy`,
+  `Cross-Origin-Resource-Policy: same-origin` (no other site may load our
+  responses as subresources — the start of most cross-site leaks) and
+  `X-Permitted-Cross-Domain-Policies: none`; pages add
+  `Origin-Agent-Cluster: ?1` and a `Permissions-Policy` that switches off
+  camera, microphone, geolocation, payment, USB, serial, HID, MIDI, screen
+  capture, Topics and the like, leaving passkeys (`publickey-credentials-*`),
+  `clipboard-write` and `fullscreen` to this origin only. The CSP allows
+  inline *styles* (several pages use style attributes) but not inline
+  scripts, so injected markup can't execute. Adding an inline `<script>` to
+  a page will now silently do nothing — put it in a `.js` file.
+- **CSP violations are reported** (`report-to` via `Reporting-Endpoints`,
+  and legacy `report-uri`) to `POST /api/reports`, which takes
+  `application/reports+json` and `application/csp-report`, caps bodies at
+  64 KB, is throttled per address like logins, logs one `logSafe` line per
+  report with query strings removed (a callback URL's `?code=` included) and
+  stores nothing. A report means a bug in our markup or an injection attempt.
+- **Nothing about a session is cached.** `/api/auth/*`, and any response that
+  sets a cookie, is `private, no-store`; every API response has
+  `Vary: Cookie`, so a shared cache can't hand one person's answer to
+  another. Public API GETs are `no-cache` with an ETag. API responses are
+  `X-Robots-Tag: noindex`, and their `Server-Timing` is rounded to whole
+  milliseconds, so it tells a timing attack on the login little that the
+  wall clock doesn't.
+- **Throttled responses say when to retry**: every 429 gets `Retry-After`
+  (the whole window, since call sites don't know how far into it they are)
+  and the IETF `RateLimit-Policy`/`RateLimit` fields — still a draft
+  (draft-ietf-httpapi-ratelimit-headers-11), so treat them as advisory.
+- **Slow and oversized requests are cut off.** Explicit `headersTimeout`
+  (20 s), `requestTimeout` (60 s), checked every 5 s, and a header-count cap
+  stop slowloris-style clients holding connections. A body declared larger
+  than the 1 MB limit is refused with 413 before a byte is read, and any
+  refused or unread oversized body closes the connection instead of being
+  drained.
 - **Static paths** are refused outright when the decoded URL holds a control
   character. `fs.readFile` validates its path *synchronously*, so a decoded
   NUL threw out of the async listener and ended the process — an
@@ -395,6 +507,59 @@ endpoint is never called, so a provider whose ID token carries no name or
 email yields usernames like `user-2`, and usernames can't be changed; and
 GitHub access tokens are dropped but not revoked — they carry no scopes.
 
+## Accessibility
+
+The frontend targets **WCAG 2.2 AA**. Checked with axe-core (zero violations
+on `/`, a tree page, a draft, the viewer — including with the panel, the
+dialogs and the search list open), Chromium's forced-colours emulation, and
+`tests/a11y-keyboard.test.js`, which drives all of the below by keyboard.
+
+- **The graph by keyboard** (`createGraphKeyboard()` in `a11y.js`, used by
+  `tree.js`, `viewer.js` and the hero in `app.js`). The canvas is one tab
+  stop: arrows pan, `+`/`-` zoom, `0` fits — the keyboard alternative to
+  dragging (2.5.7). The skills are one more, a roving tabindex: ←/→ follow a
+  link to a prerequisite / an unlock, ↑/↓ step through every skill column by
+  column, Home/End, Enter/Space does what a click does (details; a choice in
+  link mode; opening the tree in the hero, where skills are links). Link mode
+  and removing a link (the × beside each link in the panel) work without a
+  mouse. A hint listing the keys appears while the graph has keyboard focus.
+- **Dialogs are native `<dialog>`s** opened with `showModal()`, through
+  `setupModalDialog()`: top layer, inert page, Escape, focus in and back to
+  the opener, backdrop click via `closedby="any"` with a script fallback.
+- **The side panel** is an `<aside>` labelled by its heading. Opening moves
+  focus to that heading; Escape or × returns it to the skill. Results (link
+  added or removed, skill deleted) are read out through the toast, which is
+  `role="status"`; link mode's steps through `announce()`.
+- **The homepage search** is an ARIA 1.2 combobox inside `<search>`.
+- Also: a skip link on every page, one `<main>`, forced-colours styles, cross-
+  document view transitions (off under reduced motion), and a Share button
+  (`navigator.share`, falling back to the clipboard) on saved trees.
+
+Things here that will look wrong but aren't:
+
+- **Only one skill has `tabindex="0"`.** The rest are `-1` on purpose (roving
+  tabindex), or a 1000-skill tree would take a thousand Tabs to get past.
+- **`render()` notes the focused skill before emptying the layer** and
+  `graphKeys.sync()` puts focus back afterwards. Every render rebuilds the
+  nodes; without this, focus fell to `<body>` on every click and drag frame.
+- **The homepage and tree page have visually hidden `<h1>`s.** On the
+  homepage the featured tree's name comes first on screen but is a section
+  heading; on the tree page the title is an `<input>`, not a heading.
+- **The dialogs keep their old `*-overlay` ids** (`#import-overlay`,
+  `#export-overlay`, `#skill-modal-overlay`, `#viewer-empty`) so selectors
+  kept working. They're open when they have `[open]`, not when they lack
+  `[hidden]`.
+- **The closed side panel is `visibility: hidden`**, not just slid off screen:
+  off screen alone, its buttons stayed in the tab order.
+- **`#browse` has a negative `scroll-margin-top`** that cancels the page's
+  `scroll-padding-top`. The padding keeps focused cards out from under the
+  fixed header (2.4.11); the margin keeps `/#browse` landing where it did.
+- **Skills off a highlighted path fade to 0.25, but their labels only to
+  0.6** — enough to stay at 4.5:1. `--unlocks` replaced `#10b981` for the same
+  reason (non-text contrast, 3:1).
+- **The toast jumps to the top edge** when the bottom spot would cover the
+  focused element (2.4.11).
+
 ## Conventions
 
 - Skills reference each other by slug (`knead-dough`), never by database id,
@@ -416,7 +581,9 @@ covering: core CRUD, cycle rejection, zoom/pan, drag-not-persisting, new-skill
 placement, import/export round-trips, and both layout modes. They live in
 `tests/` if they were copied over; they need `npm install playwright`, which
 breaks the zero-dependency property for the app itself — keep any test
-dependency out of `backend/package.json`.
+dependency out of `backend/package.json`. `tests/a11y-keyboard.test.js`
+covers the keyboard and screen-reader behaviour, and starts its own server on
+a throwaway database (see `tests/README.md`).
 
 The API suites in `tests/api/` need nothing installed: `node --test
 "tests/api/*.test.js"`. Each starts its own server on a throwaway database
@@ -426,6 +593,13 @@ to misbehave (wrong iss, nonce, aud, expired, `alg: none`, unknown kid...);
 `tests/oauth-browser.test.js` runs the same flow in Chromium and fails on any
 console error or CSP violation. The start throttle counts every request from
 127.0.0.1, so suites that fail flows on purpose each get their own server.
+
+API suites need nothing installed: `node --test "tests/api/*.test.js"` (or
+`npm test` in `backend/`). `tests/api/http.test.js` pins the HTTP layer —
+problem details, ETags and 304s, compression, HEAD/OPTIONS/405, 415,
+429 fields, security headers, reports, Fetch Metadata, Early Hints,
+security.txt and graceful shutdown; it talks `node:http` directly because
+`fetch` decodes bodies and hides 1xx responses.
 
 Worth knowing: two bugs in this project were only caught by clicking through
 a real browser, not by API tests — a modal that invisibly blocked clicks, and
