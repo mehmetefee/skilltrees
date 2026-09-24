@@ -143,6 +143,8 @@ const MAX_PASSWORD = 4096;
 // Absolute and idle session lifetimes (ASVS V3.3).
 const SESSION_ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1000;
 const SESSION_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
+// Enough to name a browser and a platform; real ones run 100-200 characters.
+const MAX_USER_AGENT = 256;
 
 // OWASP Password Storage Cheat Sheet's minimum scrypt configuration. Node's
 // own default is N=2^14 (~16 MiB), which is well under it.
@@ -355,12 +357,38 @@ function parseCookies(req) {
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 // 256 bits of randomness, well past the 64 ASVS V3.2.2 asks for.
-function startSession(userId) {
+//
+// Each session also gets what the account page's list of sessions shows
+// (ASVS V3.3.4). public_id is the handle that list and "end this session"
+// use: random and unrelated to the token, because anything derived from
+// token_hash — even a prefix — hands out part of the lookup key, and the
+// rowid would tell one account how many sessions everyone else has. The
+// user agent is kept, cut short and with control characters out, only so a
+// person can tell their own devices apart. It is caller-supplied and shown
+// only to that caller's own account, as text.
+//
+// No IP address is stored, deliberately (GDPR Art. 5(1)(c), data
+// minimisation). An address is personal data, and one per session would
+// build a location history for every account that then has to be secured,
+// exported and erased with it — to answer a question ("is that me?") the
+// device name and the sign-in time already answer. Throttling needs the
+// address only for the moment of the request, and the log line it goes to
+// is the operator's, not the account's.
+//
+// `req` is optional so a caller that has none still gets a session; it then
+// shows as an unknown device.
+function startSession(userId, req = null) {
   const token = crypto.randomBytes(32).toString('base64url');
   db.prepare(
-    `INSERT INTO sessions (token_hash, user_id, expires_at)
-     VALUES (?, ?, datetime('now', ?))`
-  ).run(hashToken(token), userId, `+${Math.floor(SESSION_ABSOLUTE_MS / 1000)} seconds`);
+    `INSERT INTO sessions (token_hash, user_id, expires_at, public_id, user_agent)
+     VALUES (?, ?, datetime('now', ?), ?, ?)`
+  ).run(
+    hashToken(token),
+    userId,
+    `+${Math.floor(SESSION_ABSOLUTE_MS / 1000)} seconds`,
+    crypto.randomBytes(16).toString('hex'),
+    cleanLine(req && req.headers['user-agent'], MAX_USER_AGENT)
+  );
   return token;
 }
 
@@ -555,7 +583,7 @@ route('POST', '/api/auth/signup', async (req, res) => {
   }
 
   console.log(`[AUTH] signup success user=${username} id=${id} ip=${clientIp(req)}`);
-  sendJson(res, 201, { id, username }, { 'Set-Cookie': sessionCookie(startSession(id), req) });
+  sendJson(res, 201, { id, username }, { 'Set-Cookie': sessionCookie(startSession(id, req), req) });
 });
 
 route('POST', '/api/auth/login', async (req, res) => {
@@ -619,7 +647,7 @@ route('POST', '/api/auth/login', async (req, res) => {
     res,
     200,
     { id: user.id, username: user.username },
-    { 'Set-Cookie': sessionCookie(startSession(user.id), req) }
+    { 'Set-Cookie': sessionCookie(startSession(user.id, req), req) }
   );
 });
 
@@ -1007,7 +1035,7 @@ route('GET', '/api/auth/oauth/:provider/callback', async (req, res, params) => {
   // this browser had before, if any, is ended rather than left behind.
   const previous = sessionToken(req);
   if (previous) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(previous));
-  const token = startSession(userId);
+  const token = startSession(userId, req);
   giveBackStart();
   console.log(`[AUTH] oauth login success provider=${provider.id} user=${logSafe(username)} id=${userId} ip=${clientIp(req)}`);
   redirectTo(res, flow.next_path, [sessionCookie(token, req), clearFlow]);
