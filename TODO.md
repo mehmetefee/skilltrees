@@ -163,6 +163,35 @@ a password sign-in, and the Signal API. Left out, each for a reason:
 - **PRF, largeBlob and other extensions.** Nothing here encrypts anything
   client-side.
 
+## Trusted Types: deferred
+Pages require Trusted Types, markup is built with DOM calls, and the one
+policy vouches for the service worker's URL (see CLAUDE.md, "Markup is built
+with DOM calls" and "Trusted Types"). Left for later, each for a reason:
+
+- **Rich text in descriptions** (Markdown, links). Would be the first real
+  need for markup from a string. Don't add an HTML policy for it: use
+  `Element.setHTML()` (the HTML Sanitizer API, which strips script and
+  isn't a Trusted Types sink) once every browser the site supports has it,
+  or build the few allowed elements with `buildElement()` from a parse of
+  our own. Until then descriptions stay plain text.
+- **Logging a report's `sample`.** A Trusted Types report carries the first
+  40 characters of what was refused, sink first (`Element innerHTML|<img
+  src=x ...`). `/api/reports` logs the directive and not the sample, since
+  the sample quotes whatever text reached the sink — someone's tree title,
+  or an attacker's payload, straight into the operator's log. Through
+  `logSafe()` and cut short it would say which sink tripped; worth it the
+  first time a report needs diagnosing.
+- **Trusted Types in the service worker's CSP.** Not needed while
+  `WORKER_CSP` is `default-src 'none'`, which refuses `importScripts()`,
+  eval and string timers outright. If `sw.js` ever imports a script, it
+  needs `script-src 'self'` there, and then `require-trusted-types-for
+  'script'` and a policy of the worker's own as well.
+- **A lint rule** instead of the scan in `tests/trusted-types.test.js`,
+  which reads code lines with regexes and would miss a sink reached
+  indirectly (`el[prop] = html`). The browser still refuses those at run
+  time; the scan only makes the failure show before anyone clicks. A real
+  rule means an ESLint config and a dependency, for the tests at least.
+
 ## Installable app, offline, search metadata: deferred
 The manifest, the network-first service worker, page metadata, robots.txt,
 the sitemap and the well-known URLs are in (CLAUDE.md, "Installable app,
