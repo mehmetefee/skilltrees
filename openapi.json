@@ -270,6 +270,202 @@
         }
       }
     },
+    "/api/auth/password": {
+      "post": {
+        "operationId": "changePassword",
+        "summary": "Change the password, or set a first one",
+        "description": "With a password set, current_password is required (ASVS V2.1.6). An account made through a provider has none to give, so setting a first one needs a session that signed in within the last 10 minutes instead (ASVS V3.7.1); otherwise 403. The new password follows the signup rules (NIST SP 800-63B §5.1.1.2: at least 8 characters, not a common password, not containing the username, not one character repeated) and must differ from the current one. Refusals that cost no hash are not counted; everything else is, per address and per account-within-address, before any hash — ten per 15 minutes. On success every other session of the account ends (ASVS V3.3.3) and this one gets a new token in Set-Cookie; the session keeps its id and sign-in time. If the session is ended while the password is being hashed, nothing is saved (401).",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PasswordChange" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed; other sessions ended and this session's cookie replaced",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PasswordChangeResult" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": {
+            "description": "Not signed in, the current password is wrong, or the session ended before the change was saved",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": { "$ref": "#/components/responses/SignInAgain" },
+          "409": {
+            "description": "The password was changed by another request while this one was being checked",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" },
+          "503": {
+            "description": "Every password-hashing slot is busy; retry in a moment",
+            "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "Every browser signed in to this account",
+        "description": "ASVS V3.3.4. Sessions that are still usable, most recently used first. id is a random public handle; the token and its hash never leave the server. No IP addresses are stored or returned (GDPR data minimisation).",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "The account's live sessions",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/components/schemas/Session" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "endOtherSessions",
+        "summary": "Sign out every other browser",
+        "description": "Ends every session of this account except the one making the request. Needs a sign-in from the last 10 minutes (ASVS V3.3.4, \"having re-entered login credentials\"), so an old stolen cookie can't end its owner's sessions.",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Ended",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/EndedSessions" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/SignInAgain" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/sessions/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+      "delete": {
+        "operationId": "endSession",
+        "summary": "End one of this account's sessions",
+        "description": "Ending another browser's session needs a sign-in from the last 10 minutes (403 otherwise). Ending the session making the request is signing out: always allowed, and the cookie is cleared. Another account's session — or an id that isn't 32 lowercase hex characters — answers 404, exactly like one that does not exist.",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Ended. Set-Cookie clears the cookie when it was this session.",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/SignInAgain" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/auth/account": {
+      "get": {
+        "operationId": "getAccount",
+        "summary": "The signed-in account, with how many trees it owns",
+        "description": "What the account page shows before deletion: deleting the account deletes these trees too.",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "The account",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccountSummary" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAccount",
+        "summary": "Delete the account and every tree it made",
+        "description": "GDPR Art. 17 (erasure). In one transaction: every tree the account owns (with its skills and links), then the account, whose sessions, connected sign-ins and unfinished provider sign-ins go with it. confirm_username must equal the username, case-insensitively. password is required when the account has one; otherwise the session must have signed in within the last 10 minutes (403). A wrong username or missing password is not counted towards the limit; a wrong password is, before the hash. The response clears the cookie and sends Clear-Site-Data: \"cookies\", \"storage\".",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AccountDelete" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted; the session cookie and this site's browser storage are cleared",
+            "headers": {
+              "Set-Cookie": { "$ref": "#/components/headers/SetSessionCookie" },
+              "Clear-Site-Data": { "$ref": "#/components/headers/ClearSiteDataErase" }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccountDeleteResult" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": {
+            "description": "Not signed in, the password is wrong, or the session ended before the deletion",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": { "$ref": "#/components/responses/SignInAgain" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" },
+          "503": {
+            "description": "Every password-hashing slot is busy; retry in a moment",
+            "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/export": {
+      "get": {
+        "operationId": "exportAccountData",
+        "summary": "Download everything held about the account",
+        "description": "GDPR Art. 15 (access) and Art. 20 (portability): one JSON attachment, skilltrees-<username>.json, holding the account, its connected sign-ins, its sessions' metadata, its passkeys' names and dates (when passkeys exist on this server), and every tree it owns in the portable format of FORMAT.md — each of which can be sent to POST /api/trees/import as it is. Never included: the password hash, session tokens or their hashes, passkey key material. Ten exports per account per 15 minutes.",
+        "tags": ["Auth"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "The export, as a download",
+            "headers": {
+              "Content-Disposition": {
+                "description": "attachment; filename=\"skilltrees-<username>.json\"",
+                "schema": { "type": "string", "maxLength": 100 }
+              },
+              "Cache-Control": {
+                "description": "Always private, no-store.",
+                "schema": { "type": "string", "enum": ["private, no-store"] }
+              }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccountExport" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
     "/api/trees": {
       "get": {
         "operationId": "listTrees",
@@ -663,6 +859,10 @@
         "description": "W3C Clear Site Data. Always \"cookies\".",
         "schema": { "type": "string", "enum": ["\"cookies\""] }
       },
+      "ClearSiteDataErase": {
+        "description": "W3C Clear Site Data, on account deletion: cookies and this site's browser storage (sessionStorage, localStorage, IndexedDB), but not the HTTP cache — nothing personal is cached — and not executionContexts.",
+        "schema": { "type": "string", "enum": ["\"cookies\", \"storage\""] }
+      },
       "ETag": {
         "description": "Strong validator for this representation (RFC 9110 §8.8.3), distinct per Content-Encoding. Send it back in If-None-Match to get a 304 when nothing changed.",
         "schema": { "type": "string", "maxLength": 100 }
@@ -723,6 +923,13 @@
         "required": true,
         "description": "Connected provider account id.",
         "schema": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "SessionId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "A session's public id, from GET /api/auth/sessions. Random, and unrelated to the session token.",
+        "schema": { "type": "string", "pattern": "^[0-9a-f]{32}$", "minLength": 32, "maxLength": 32 }
       }
     },
     "responses": {
@@ -761,6 +968,10 @@
       },
       "PayloadTooLarge": {
         "description": "Request body exceeded 1 MB",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "SignInAgain": {
+        "description": "This needs a sign-in from the last 10 minutes (ASVS V3.7.1): setting a first password or deleting an account that has none, or ending another browser's session. Sign out and in again, then retry.",
         "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "TooManyRequests": {
@@ -960,6 +1171,181 @@
             "type": "boolean",
             "description": "Whether it can sign in now: its provider is configured, under the same issuer."
           }
+        }
+      },
+      "PasswordChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["new_password"],
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Required when the account has a password; ignored when it has none."
+          },
+          "new_password": { "type": "string", "minLength": 8, "maxLength": 4096 }
+        }
+      },
+      "PasswordChangeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok", "other_sessions_ended"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "other_sessions_ended": { "type": "integer", "format": "int32", "minimum": 0, "maximum": 1000000 }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "created_at", "last_used_at", "user_agent", "current"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[0-9a-f]{32}$", "minLength": 32, "maxLength": 32 },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "last_used_at": { "$ref": "#/components/schemas/Timestamp" },
+          "user_agent": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "As the browser sent it, cut to 256 characters, control characters removed; empty when unknown. Caller-supplied: a label, not proof."
+          },
+          "current": { "type": "boolean", "description": "Whether this is the session making the request." }
+        }
+      },
+      "EndedSessions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok", "ended"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "ended": { "type": "integer", "format": "int32", "minimum": 0, "maximum": 1000000 }
+        }
+      },
+      "AccountSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "username", "created_at", "has_password", "tree_count"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+          "username": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{3,40}$", "minLength": 3, "maxLength": 40 },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "has_password": { "type": "boolean" },
+          "tree_count": { "type": "integer", "format": "int32", "minimum": 0, "maximum": 1000000 }
+        }
+      },
+      "AccountDelete": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["confirm_username"],
+        "properties": {
+          "confirm_username": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The account's username, typed to confirm; compared case-insensitively."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Required when the account has a password."
+          }
+        }
+      },
+      "AccountDeleteResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok", "deleted_trees"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "deleted_trees": { "type": "integer", "format": "int32", "minimum": 0, "maximum": 1000000 }
+        }
+      },
+      "AccountExport": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Everything held about one account. Times are UTC, in the Timestamp format.",
+        "required": ["format", "version", "exported_at", "about", "account", "identities", "sessions", "trees"],
+        "properties": {
+          "format": { "type": "string", "enum": ["skilltrees-account-export"] },
+          "version": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 1 },
+          "exported_at": { "$ref": "#/components/schemas/Timestamp" },
+          "about": { "type": "string", "maxLength": 500 },
+          "account": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "username", "created_at", "has_password"],
+            "properties": {
+              "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+              "username": { "type": "string", "maxLength": 40 },
+              "created_at": { "$ref": "#/components/schemas/Timestamp" },
+              "has_password": { "type": "boolean" }
+            }
+          },
+          "identities": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/components/schemas/ExportedIdentity" }
+          },
+          "sessions": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": { "$ref": "#/components/schemas/ExportedSession" }
+          },
+          "passkeys": {
+            "type": "array",
+            "maxItems": 1000,
+            "description": "Present only when this server stores passkeys.",
+            "items": { "$ref": "#/components/schemas/ExportedPasskey" }
+          },
+          "trees": {
+            "type": "array",
+            "maxItems": 100000,
+            "items": { "$ref": "#/components/schemas/ExportedTree" }
+          }
+        }
+      },
+      "ExportedIdentity": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "A connected sign-in. issuer and subject are what link it to this account; on their own they sign nobody in.",
+        "required": ["provider", "provider_name", "issuer", "subject", "display_name", "created_at"],
+        "properties": {
+          "provider": { "type": "string", "maxLength": 20 },
+          "provider_name": { "type": "string", "maxLength": 40 },
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "subject": { "type": "string", "maxLength": 255 },
+          "display_name": { "type": "string", "maxLength": 120 },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" }
+        }
+      },
+      "ExportedSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["created_at", "last_used_at", "expires_at", "user_agent", "current"],
+        "properties": {
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "last_used_at": { "$ref": "#/components/schemas/Timestamp" },
+          "expires_at": { "$ref": "#/components/schemas/Timestamp" },
+          "user_agent": { "type": "string", "maxLength": 256 },
+          "current": { "type": "boolean" }
+        }
+      },
+      "ExportedPasskey": {
+        "type": "object",
+        "description": "Whichever of id, name (or label/nickname), created_at and last_used_at (or last_used) the passkeys table has. Never key material, credential ids or counters.",
+        "properties": {
+          "id": { "oneOf": [{ "type": "integer" }, { "type": "string", "maxLength": 200 }] },
+          "name": { "type": "string", "nullable": true, "maxLength": 200 },
+          "created_at": { "type": "string", "nullable": true, "maxLength": 40 },
+          "last_used_at": { "type": "string", "nullable": true, "maxLength": 40 }
+        }
+      },
+      "ExportedTree": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "created_at", "notation"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "maximum": 9007199254740991 },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "notation": { "$ref": "#/components/schemas/Notation" }
         }
       },
       "LayoutMode": {

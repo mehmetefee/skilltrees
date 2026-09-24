@@ -338,6 +338,9 @@ function showAccountView(user, providers, connected) {
     if (provider) showToast(`Connected ${provider.name}.`);
   }
   renderSignInMethods(user, providers);
+  // The password, sessions, your data and deleting the account live in
+  // account-settings.js, which only account.html loads.
+  if (typeof setupAccountSettings === 'function') setupAccountSettings(user, providers);
 }
 
 // "Sign-in methods": the password, each connected provider with Disconnect,
@@ -395,7 +398,12 @@ async function renderSignInMethods(user, providers) {
 
   list.textContent = '';
 
-  row('Password', user.has_password ? 'Set' : 'Not set — you sign in through a provider below', null);
+  // Changing or setting it happens in its own section further down the page.
+  const toPassword = document.createElement('a');
+  toPassword.className = 'btn btn-small';
+  toPassword.href = '#account-password';
+  toPassword.textContent = user.has_password ? 'Change' : 'Set a password';
+  row('Password', user.has_password ? 'Set' : 'Not set — you sign in through a provider below', toPassword);
 
   for (const identity of identities) {
     const detail = [identity.display_name, `connected ${timeAgo(identity.created_at)}`];

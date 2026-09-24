@@ -63,6 +63,8 @@ frontend/
   index.html/app.js    browse + search + import, featured-tree hero
   account.html         sign in / sign up, and the signed-in "Your account"
                        panel (its code is the account section of app.js)
+  account-settings.js  that panel's password, sessions, "your data" and
+                       delete-account sections
   tree.html/tree.js    the graph view, and where trees are created:
                        render, edit, title/description, zoom/pan, export
   viewer.html/viewer.js  view a tree from a file without publishing it
@@ -487,6 +489,89 @@ and the rule each one exists for:
   back when the sign-in completes, like a successful login), and unfinished
   flows are capped at 5000 overall.
 
+### Account management
+
+Changing or setting a password, seeing and ending sessions, downloading
+your data and deleting the account: the section after the OAuth routes in
+`server.js`, and `account-settings.js` for the four sections of the account
+page. Written against OWASP ASVS V2.1, V3.3 and V3.7, NIST SP 800-63B, and
+the GDPR's Art. 15 (access), 17 (erasure) and 20 (portability). The
+measures, and the rule each one exists for:
+
+- **Deleting an account deletes every tree it made.** A decision, not an
+  accident. The trees are what the person wrote, published under their
+  name: erasure (Art. 17) that left them up would keep the bulk of their
+  personal data public while taking away the only account allowed to edit
+  or delete it. The alternative — keeping them, owned by nobody — would make
+  them read-only for ever, like the trees from before accounts. So the page
+  says how many trees will go, offers the export first (every tree in it can
+  be imported again), and the route deletes trees and account in one
+  transaction. If one of them was the featured tree, the homepage simply
+  has none until an operator picks another.
+- **Proof it's the owner before a lasting change** (ASVS V2.1.6, V3.7.1).
+  A session is only a cookie, and a cookie can be lifted from a shared
+  machine or a leaked log. Changing the password needs the current one;
+  deleting the account needs the password and the username typed out.
+  An account with no password has nothing to type, so for it the proof is
+  **a sign-in within the last ten minutes** (`RECENT_AUTH_SEC`): the
+  session's `created_at`, which signing in writes and nothing else touches.
+  Otherwise the answer is 403 "sign in again", and the page offers a button
+  that signs out and comes back to the same section afterwards.
+- **Ending another browser's session needs a recent sign-in too** (ASVS
+  V3.3.4, "having re-entered login credentials"). Without it, a cookie
+  stolen last week could end its owner's sessions as fast as they signed in
+  — and with them the password change that would have ended the thief's.
+  With it, the owner, freshly signed in, can always end an old stolen
+  session and the stolen one can't end theirs. Ending your *own* session is
+  signing out and is never refused.
+- **A password change ends every other session and rotates this one**
+  (ASVS V3.3.3): whoever knew the old password may be signed in somewhere,
+  and that's why people change it. The current session gets a new token in
+  place — same row, same id in the list, same `created_at`, since rotating
+  is not signing in and mustn't restart the ten-minute window.
+- **Same rules and same throttling as signup and login.** The new password
+  goes through `passwordProblem()` (username check included) and must
+  differ from the current one. Refusals that cost nothing aren't counted;
+  guesses are, per address and per account-within-address, before any
+  hash (`countAccountAttempt()`), and through the same capped `derive()`.
+  A wrong typed username on deletion is a typo and isn't counted either.
+  Exports are rationed per account.
+- **Nothing lands for a session that ended mid-request.** A password check
+  takes about half a second; the session is looked up again after it
+  (`sessionStillLive()`), in the same synchronous block as the writes, so a
+  change asked for by a browser that was signed out meanwhile is refused.
+  The password is swapped only if it's still the one that was checked.
+- **Sessions are listed by a random `public_id`**, never by anything
+  derived from the token: a prefix of `token_hash` would hand out part of
+  the lookup key. Another account's session answers 404, like one that
+  doesn't exist. Each shows a coarse device name the page derives from the
+  stored user agent ("Firefox on Windows"; anything unrecognised is an
+  "Unknown device", never raw text) — cut to 256 characters, control
+  characters removed.
+- **No IP addresses are stored with sessions** (GDPR Art. 5(1)(c), data
+  minimisation). One per session would build a location history for every
+  account that would then need securing, exporting and erasing, to answer a
+  question — "is that me?" — that the device name and sign-in time answer.
+- **The export is everything held, and no secrets.** `GET /api/auth/export`
+  is one JSON file: the account, connected sign-ins (issuer and subject
+  too — they're personal data, but sign nobody in), session metadata,
+  passkey names and dates when a passkeys table exists (found by probing,
+  since passkeys are built separately; only an allow-listed set of columns
+  is read), and every tree through `treeToNotation()`, so each one imports
+  again as it is. Never the password hash, tokens or their hashes, or key
+  material. `private, no-store`.
+- **Deletion clears the browser too**: `Clear-Site-Data: "cookies",
+  "storage"`. Unlike logout, "storage" as well — what the site keeps in the
+  browser (the viewer's copy of a tree in sessionStorage, likely one of the
+  trees just deleted) belongs to the person who asked for everything to go.
+  Not "cache" (nothing personal is cached) and not "executionContexts"
+  (the page is leaving for the homepage anyway).
+- **Every reference to `users` is `ON DELETE CASCADE`, except
+  `trees.user_id`**, which the route deletes first. A test audits the schema
+  for this: a table added later without a cascade would make deletion fail
+  as a whole — safely, one transaction — so it should be caught there.
+  Add new per-user tables with `ON DELETE CASCADE`.
+
 Known limits, deliberate for a site this size: the throttle is a table in the
 same SQLite database, so it survives a restart but wouldn't be shared across
 hosts; there is no account-wide guess limit, only per-address and
@@ -499,8 +584,17 @@ list is the head of the published lists rather than a full breach corpus;
 `clientIp()` uses the socket address, not `X-Forwarded-For`, which is
 caller-supplied — running behind a proxy needs that handled properly; signup
 reveals whether a username is taken, which it has to in order to be usable;
-there is no password change, reset or second factor yet, so an account made
-through a provider has no way to add a password; a provider sign-in only
+there is no password reset — it needs a channel to the person, such as
+email, which the site doesn't have — and no second factor; the ten-minute
+window is all that protects an account without a password, so a cookie
+stolen within ten minutes of a sign-in could set a password the owner can't
+then change without knowing it (they can still sign in through the
+provider, and removing that password takes a script against the database,
+as changing an ownerless tree does); a deleted account's username is
+free to claim at once, and the throttle counters keyed on it or its id age
+out within the hour rather than being erased; the operator's logs (which
+carry usernames and addresses) are outside the export and the deletion,
+and are kept for however long the operator keeps logs; a provider sign-in only
 works on the host `PUBLIC_ORIGIN` names, because the flow cookie is set by
 the host the button was clicked on (serve one canonical host); the userinfo
 endpoint is never called, so a provider whose ID token carries no name or
@@ -599,7 +693,11 @@ API suites need nothing installed: `node --test "tests/api/*.test.js"` (or
 problem details, ETags and 304s, compression, HEAD/OPTIONS/405, 415,
 429 fields, security headers, reports, Fetch Metadata, Early Hints,
 security.txt and graceful shutdown; it talks `node:http` directly because
-`fetch` decodes bodies and hides 1xx responses.
+`fetch` decodes bodies and hides 1xx responses. `tests/api/account.test.js`
+covers account management — password change and first password, sessions,
+deletion, export, throttling — and audits that every reference to `users`
+cascades; `tests/account-browser.test.js` drives the same sections in
+Chromium.
 
 Worth knowing: two bugs in this project were only caught by clicking through
 a real browser, not by API tests — a modal that invisibly blocked clicks, and
