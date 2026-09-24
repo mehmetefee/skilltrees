@@ -501,7 +501,7 @@ function render() {
       );
 
   // Edges
-  edgesLayer.innerHTML = '';
+  edgesLayer.replaceChildren();
   tree.edges.forEach((edge, index) => {
     const from = skillById(edge.prereq_skill_id);
     const to = skillById(edge.skill_id);
@@ -535,7 +535,7 @@ function render() {
   // Nodes. Rebuilding the layer destroys whichever node had focus, so note it
   // first and hand focus back to its replacement at the end.
   const refocusId = graphKeys.focusedId();
-  nodesLayer.innerHTML = '';
+  nodesLayer.replaceChildren();
   // Keep the dragging node rendered last so it floats above other nodes
   const sortedSkills = tree.skills.slice().sort((a, b) => {
     if (a.id === draggingSkillId) return 1;
@@ -1303,7 +1303,7 @@ function panelLinkRow(skill, otherId, edge) {
     const unlink = document.createElement('button');
     unlink.type = 'button';
     unlink.className = 'panel-unlink';
-    unlink.innerHTML = '<span aria-hidden="true">&times;</span>';
+    unlink.append(buildElement('span', { attrs: { 'aria-hidden': 'true' } }, '×'));
     unlink.title = 'Remove this link';
     unlink.setAttribute(
       'aria-label',
@@ -1321,19 +1321,19 @@ function openSidePanel(skill, { focus = true } = {}) {
   document.getElementById('panel-desc').textContent = skill.description || 'No description.';
 
   const prereqList = document.getElementById('panel-prereqs');
-  prereqList.innerHTML = '';
+  prereqList.replaceChildren();
   const prereqEdges = tree.edges.filter((e) => e.skill_id === skill.id);
   if (prereqEdges.length === 0) {
-    prereqList.innerHTML = '<li class="panel-empty">None — this is a starting skill.</li>';
+    prereqList.append(buildElement('li', { className: 'panel-empty' }, 'None — this is a starting skill.'));
   } else {
     for (const edge of prereqEdges) prereqList.appendChild(panelLinkRow(skill, edge.prereq_skill_id, edge));
   }
 
   const unlockList = document.getElementById('panel-unlocks');
-  unlockList.innerHTML = '';
+  unlockList.replaceChildren();
   const unlockEdges = tree.edges.filter((e) => e.prereq_skill_id === skill.id);
   if (unlockEdges.length === 0) {
-    unlockList.innerHTML = '<li class="panel-empty">Nothing yet.</li>';
+    unlockList.append(buildElement('li', { className: 'panel-empty' }, 'Nothing yet.'));
   } else {
     for (const edge of unlockEdges) unlockList.appendChild(panelLinkRow(skill, edge.skill_id, edge));
   }

@@ -1890,6 +1890,13 @@ g[data-skill-id]:focus-visible .node-focus-ring { opacity: 1; }
   box-shadow: 0 8px 32px rgba(37, 99, 235, 0.15);
   animation: modalScaleIn 0.3s var(--ease-bounce);
 }
+.drop-zone-icon { font-size: 36px; margin-bottom: 12px; }
+.drop-zone-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: normal;
+  margin-top: 6px;
+}
 
 /* ----------------------------------------------------------------- toast */
 
