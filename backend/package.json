@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "seed": "node db/seed.js"
+    "seed": "node db/seed.js",
+    "test": "node --test \"../tests/api/*.test.js\""
   }
 }

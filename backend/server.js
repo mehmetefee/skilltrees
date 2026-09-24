@@ -1051,5 +1051,7 @@ purgeExpiredSessions();
 setInterval(purgeExpiredSessions, 60 * 60 * 1000).unref();
 
 server.listen(PORT, () => {
-  console.log(`Skill Tree server running at http://localhost:${PORT}`);
+  // The real port, not PORT: with PORT=0 the OS picks one, and the test
+  // harness reads it from this line.
+  console.log(`Skill Tree server running at http://localhost:${server.address().port}`);
 });

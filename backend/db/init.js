@@ -13,8 +13,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DB_DIR = __dirname;
-const DB_PATH = path.join(DB_DIR, 'skilltree.db');
+// SKILLTREE_DB points the server at another database file. Tests use it to
+// give every run a throwaway database of its own, so suites can run side by
+// side without sharing accounts, trees or rate-limit counters.
+const DB_PATH = process.env.SKILLTREE_DB
+  ? path.resolve(process.env.SKILLTREE_DB)
+  : path.join(__dirname, 'skilltree.db');
+const DB_DIR = path.dirname(DB_PATH);
 
 function openDb() {
   const isNew = !fs.existsSync(DB_PATH);

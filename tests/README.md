@@ -56,3 +56,20 @@ One caution: a few checks assert on *expected* console errors — a rejected
 import legitimately logs a 400. Those assertions are written to distinguish
 expected failures from unexpected ones, so don't "fix" them by asserting
 zero console output.
+
+## API suites (no dependencies)
+
+`tests/api/` holds suites written against Node's built-in test runner
+(`node:test`) and the global `fetch`, so they need nothing installed:
+
+```bash
+cd backend && npm test                   # or, from the root:
+node --test "tests/api/*.test.js"
+```
+
+Each suite starts its own server through `tests/helpers/server.js`: a child
+process on a port the OS picks (`PORT=0`), pointed at a throwaway database
+with `SKILLTREE_DB`. Suites therefore don't need a server running, don't
+touch your working database, and can run in parallel — every one gets fresh
+accounts and fresh rate-limit counters. The helper's `signup(name)` returns a
+client already carrying that account's session cookie.
