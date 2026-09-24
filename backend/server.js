@@ -767,7 +767,7 @@ function usernameFor(hint) {
   if (at > 0) base = base.slice(0, at);
   base = base
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9_-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^[-_]+|[-_]+$/g, '')
